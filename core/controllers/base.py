@@ -26,10 +26,10 @@ import time
 import traceback
 import urlparse
 
+from constants import constants
 from core.domain import config_domain
 from core.domain import config_services
 from core.domain import rights_manager
-from core.domain import role_services
 from core.domain import user_services
 from core.platform import models
 import feconf
@@ -84,13 +84,10 @@ class LogoutPage(webapp2.RequestHandler):
         page (or the home page if no follow-up page is specified).
         """
 
-        # The str conversion is needed, otherwise an InvalidResponseError
-        # asking for the 'Location' header value to be str instead of
-        # 'unicode' will result.
-        url_to_redirect_to = str(self.request.get('return_url') or '/')
         _clear_login_cookies(self.response.headers)
+        url_to_redirect_to = '/'
 
-        if feconf.DEV_MODE:
+        if constants.DEV_MODE:
             self.redirect(users.create_logout_url(url_to_redirect_to))
         else:
             self.redirect(url_to_redirect_to)
@@ -129,6 +126,9 @@ class BaseHandler(webapp2.RequestHandler):
 
     # What format the get method returns when exception raised, json or html.
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_HTML
+    POST_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    PUT_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    DELETE_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
 
     @webapp2.cached_property
     def jinja2_env(self):
@@ -150,10 +150,7 @@ class BaseHandler(webapp2.RequestHandler):
 
         self.user_id = current_user_services.get_current_user_id()
         self.username = None
-        self.has_seen_editor_tutorial = False
         self.partially_logged_in = False
-        self.values['profile_picture_data_url'] = None
-        self.preferred_site_language_code = None
 
         if self.user_id:
             user_settings = user_services.get_user_settings(
@@ -171,13 +168,7 @@ class BaseHandler(webapp2.RequestHandler):
                 self.user_id = None
             else:
                 self.username = user_settings.username
-                self.preferred_site_language_code = (
-                    user_settings.preferred_site_language_code)
                 self.values['username'] = self.username
-                self.values['profile_picture_data_url'] = (
-                    user_settings.profile_picture_data_url)
-                if user_settings.last_started_state_editor_tutorial:
-                    self.has_seen_editor_tutorial = True
                 # In order to avoid too many datastore writes, we do not bother
                 # recording a log-in if the current time is sufficiently close
                 # to the last log-in time.
@@ -195,9 +186,13 @@ class BaseHandler(webapp2.RequestHandler):
         self.is_super_admin = (
             current_user_services.is_current_user_super_admin())
 
+        self.values['additional_angular_modules'] = []
+        self.values['iframed'] = False
         self.values['is_moderator'] = user_services.is_at_least_moderator(
             self.user_id)
         self.values['is_admin'] = user_services.is_admin(self.user_id)
+        self.values['is_topic_manager'] = (
+            user_services.is_topic_manager(self.user_id))
         self.values['is_super_admin'] = self.is_super_admin
 
         if self.request.get('payload'):
@@ -215,20 +210,29 @@ class BaseHandler(webapp2.RequestHandler):
         # If the request is to the old demo server, redirect it permanently to
         # the new demo server.
         if self.request.uri.startswith('https://oppiaserver.appspot.com'):
-            self.redirect('https://oppiatestserver.appspot.com', True)
+            self.redirect('https://oppiatestserver.appspot.com', permanent=True)
             return
 
         # In DEV_MODE, clearing cookies does not log out the user, so we
         # force-clear them by redirecting to the logout URL.
-        if feconf.DEV_MODE and self.partially_logged_in:
+        if constants.DEV_MODE and self.partially_logged_in:
             self.redirect(users.create_logout_url(self.request.uri))
             return
 
         if self.payload is not None and self.REQUIRE_PAYLOAD_CSRF_CHECK:
             try:
+                # If user opens a new tab during signup process, the user_id
+                # parameter is set to None and this causes the signup session
+                # to expire. The code here checks if user is on the signup
+                # page and the user_id is None, if that is the case an exception
+                # is raised which is handled by the frontend by showing a
+                # continue to registration modal.
+                if 'signup' in self.request.uri and not self.user_id:
+                    raise self.UnauthorizedUserException(
+                        'Registration session expired.')
                 csrf_token = self.request.get('csrf_token')
                 if not csrf_token:
-                    raise Exception(
+                    raise self.UnauthorizedUserException(
                         'Missing CSRF token. Changes were not saved. '
                         'Please report this bug.')
 
@@ -240,11 +244,10 @@ class BaseHandler(webapp2.RequestHandler):
                         'Your session has expired, and unfortunately your '
                         'changes cannot be saved. Please refresh the page.')
             except Exception as e:
-                logging.error(
-                    '%s: payload %s',
-                    e, self.payload)
+                logging.error('%s: payload %s', e, self.payload)
 
-                return self.handle_exception(e, self.app.debug)
+                self.handle_exception(e, self.app.debug)
+                return
 
         super(BaseHandler, self).dispatch()
 
@@ -276,25 +279,19 @@ class BaseHandler(webapp2.RequestHandler):
         self.response.headers['Strict-Transport-Security'] = (
             'max-age=31536000; includeSubDomains')
         self.response.headers['X-Content-Type-Options'] = 'nosniff'
+        self.response.headers['X-Xss-Protection'] = '1; mode=block'
 
         json_output = json.dumps(values, cls=utils.JSONEncoderForHTML)
         self.response.write('%s%s' % (feconf.XSSI_PREFIX, json_output))
 
-    def _get_logout_url(self, redirect_url_on_logout):
-        """Prepares and returns logout url which will be handled
-        by LogoutPage handler.
+    def render_downloadable_file(self, values, filename, content_type):
+        """Prepares downloadable content to be sent to the client."""
+        self.response.headers['Content-Type'] = content_type
+        self.response.headers['Content-Disposition'] = str(
+            'attachment; filename=%s' % filename)
+        self.response.write(values)
 
-        Args:
-            redirect_url_on_logout: str. URL to redirect to on logout.
-
-        Returns:
-            str. Logout URL to be handled by LogoutPage handler.
-        """
-        return current_user_services.create_logout_url(redirect_url_on_logout)
-
-    def render_template(
-            self, filepath, iframe_restriction='DENY',
-            redirect_url_on_logout=None):
+    def render_template(self, filepath, iframe_restriction='DENY'):
         """Prepares an HTML response to be sent to the client.
 
         Args:
@@ -305,17 +302,15 @@ class BaseHandler(webapp2.RequestHandler):
                 DENY: Strictly prevents the template to load in an iframe.
                 SAMEORIGIN: The template can only be displayed in a frame
                     on the same origin as the page itself.
-            redirect_url_on_logout: str or None. URL to redirect to on logout.
         """
         values = self.values
 
         scheme, netloc, path, _, _ = urlparse.urlsplit(self.request.uri)
 
         values.update({
-            'ASSET_DIR_PREFIX': utils.get_asset_dir_prefix(),
             'BEFORE_END_HEAD_TAG_HOOK': jinja2.utils.Markup(
                 BEFORE_END_HEAD_TAG_HOOK.value),
-            'DEV_MODE': feconf.DEV_MODE,
+            'DEV_MODE': constants.DEV_MODE,
             'DOMAIN_URL': '%s://%s' % (scheme, netloc),
             'ACTIVITY_STATUS_PRIVATE': (
                 rights_manager.ACTIVITY_STATUS_PRIVATE),
@@ -325,28 +320,8 @@ class BaseHandler(webapp2.RequestHandler):
                 app_identity_services.get_gcs_resource_bucket_name()),
             # The 'path' variable starts with a forward slash.
             'FULL_URL': '%s://%s%s' % (scheme, netloc, path),
-            'INVALID_NAME_CHARS': feconf.INVALID_NAME_CHARS,
-            'SITE_FEEDBACK_FORM_URL': feconf.SITE_FEEDBACK_FORM_URL,
-            'SITE_NAME': feconf.SITE_NAME,
-            'SYSTEM_USERNAMES': feconf.SYSTEM_USERNAMES,
-            'TEMPLATE_DIR_PREFIX': utils.get_template_dir_prefix(),
-            'can_create_collections': bool(
-                role_services.ACTION_CREATE_COLLECTION in self.user.actions),
-            'username': self.username,
             'user_is_logged_in': user_services.has_fully_registered(
-                self.user_id),
-            'preferred_site_language_code': self.preferred_site_language_code,
-            'allow_yaml_file_upload': feconf.ALLOW_YAML_FILE_UPLOAD
-        })
-        if feconf.ENABLE_PROMO_BAR:
-            promo_bar_enabled = config_domain.PROMO_BAR_ENABLED.value
-            promo_bar_message = config_domain.PROMO_BAR_MESSAGE.value
-        else:
-            promo_bar_enabled = False
-            promo_bar_message = ''
-        values.update({
-            'promo_bar_enabled': promo_bar_enabled,
-            'promo_bar_message': promo_bar_message,
+                self.user_id)
         })
 
         if 'status_code' not in values:
@@ -359,27 +334,6 @@ class BaseHandler(webapp2.RequestHandler):
             values['meta_description'] = (
                 'Oppia is a free, open-source learning platform. Join the '
                 'community to create or try an exploration today!')
-
-        # nav_mode is used as part of the GLOBALS object in the frontend, but
-        # not every backend handler declares a nav_mode. Thus, the following
-        # code is a failsafe to ensure that the nav_mode key is added to all
-        # page requests.
-        if 'nav_mode' not in values:
-            values['nav_mode'] = ''
-
-        if redirect_url_on_logout is None:
-            redirect_url_on_logout = self.request.uri
-
-        if self.user_id:
-            values['login_url'] = None
-            values['logout_url'] = self._get_logout_url(redirect_url_on_logout)
-        else:
-            target_url = (
-                '/' if self.request.uri.endswith(feconf.SPLASH_URL)
-                else self.request.uri)
-            values['login_url'] = (
-                current_user_services.create_login_url(target_url))
-            values['logout_url'] = None
 
         # Create a new csrf token for inclusion in HTML responses. This assumes
         # that tokens generated in one handler will be sent back to a handler
@@ -395,6 +349,7 @@ class BaseHandler(webapp2.RequestHandler):
         self.response.headers['Strict-Transport-Security'] = (
             'max-age=31536000; includeSubDomains')
         self.response.headers['X-Content-Type-Options'] = 'nosniff'
+        self.response.headers['X-Xss-Protection'] = '1; mode=block'
 
         if iframe_restriction is not None:
             if iframe_restriction in ['SAMEORIGIN', 'DENY']:
@@ -409,55 +364,94 @@ class BaseHandler(webapp2.RequestHandler):
         self.response.write(
             self.jinja2_env.get_template(filepath).render(**values))
 
+    def _render_exception_json_or_html(self, return_type, values):
+        """Renders an error page, or an error JSON response.
+
+        Args:
+            return_type: str. Indicator to return JSON or HTML.
+            values: dict. The key-value pairs to include in the response.
+        """
+
+        method = self.request.environ['REQUEST_METHOD']
+
+        if return_type == feconf.HANDLER_TYPE_HTML and (
+                method == 'GET'):
+            self.values.update(values)
+            if 'iframed' in self.values and self.values['iframed']:
+                self.render_template(
+                    'pages/error/error_iframed.html', iframe_restriction=None)
+            else:
+                self.render_template('dist/error.html')
+        else:
+            if return_type != feconf.HANDLER_TYPE_JSON and (
+                    return_type != feconf.HANDLER_TYPE_DOWNLOADABLE):
+                logging.warning('Not a recognized return type: '
+                                'defaulting to render JSON.')
+            self.render_json(values)
+
     def _render_exception(self, error_code, values):
         """Renders an error page, or an error JSON response.
 
-         Args:
+        Args:
             error_code: int. The HTTP status code (expected to be one of
                 400, 401, 404 or 500).
             values: dict. The key-value pairs to include in the response.
         """
         assert error_code in [400, 401, 404, 500]
         values['status_code'] = error_code
+        method = self.request.environ['REQUEST_METHOD']
 
-        # This checks if the response should be JSON or HTML.
-        # For GET requests, there is no payload, so we check against
-        # GET_HANDLER_ERROR_RETURN_TYPE.
-        # Otherwise, we check whether self.payload exists.
-        if (self.payload is not None or
-                self.GET_HANDLER_ERROR_RETURN_TYPE ==
-                feconf.HANDLER_TYPE_JSON):
-            self.render_json(values)
+        if method == 'GET':
+            self._render_exception_json_or_html(
+                self.GET_HANDLER_ERROR_RETURN_TYPE, values)
+        elif method == 'POST':
+            self._render_exception_json_or_html(
+                self.POST_HANDLER_ERROR_RETURN_TYPE, values)
+        elif method == 'PUT':
+            self._render_exception_json_or_html(
+                self.PUT_HANDLER_ERROR_RETURN_TYPE, values)
+        elif method == 'DELETE':
+            self._render_exception_json_or_html(
+                self.DELETE_HANDLER_ERROR_RETURN_TYPE, values)
         else:
-            self.values.update(values)
-            if 'iframed' in self.values and self.values['iframed']:
-                self.render_template(
-                    'pages/error/error_iframed.html', iframe_restriction=None)
-            else:
-                self.render_template('pages/error/error.html')
+            logging.warning('Not a recognized request method.')
+            self._render_exception_json_or_html(
+                None, values)
 
     def handle_exception(self, exception, unused_debug_mode):
         """Overwrites the default exception handler.
 
         Args:
-            exception: The exception that was thrown.
+            exception: Exception. The exception that was thrown.
             unused_debug_mode: bool. True if the web application is running
                 in debug mode.
         """
         if isinstance(exception, self.NotLoggedInException):
-            self.redirect(
-                current_user_services.create_login_url(self.request.uri))
+            # This checks if the response should be JSON or HTML.
+            # For GET requests, there is no payload, so we check against
+            # GET_HANDLER_ERROR_RETURN_TYPE.
+            # Otherwise, we check whether self.payload exists.
+            if (self.payload is not None or
+                    self.GET_HANDLER_ERROR_RETURN_TYPE ==
+                    feconf.HANDLER_TYPE_JSON):
+                self.error(401)
+                self._render_exception(401, {'error': unicode(exception)})
+            else:
+                self.redirect(
+                    current_user_services.create_login_url(self.request.uri))
             return
 
         logging.info(''.join(traceback.format_exception(*sys.exc_info())))
-        logging.error('Exception raised: %s', exception)
 
         if isinstance(exception, self.PageNotFoundException):
-            logging.error('Invalid URL requested: %s', self.request.uri)
+            logging.warning('Invalid URL requested: %s', self.request.uri)
             self.error(404)
-            self._render_exception(404, {
-                'error': 'Could not find the page %s.' % self.request.uri})
+            self._render_exception(
+                404, {
+                    'error': 'Could not find the page %s.' % self.request.uri})
             return
+
+        logging.error('Exception raised: %s', exception)
 
         if isinstance(exception, self.UnauthorizedUserException):
             self.error(401)
@@ -487,7 +481,7 @@ class BaseHandler(webapp2.RequestHandler):
 class Error404Handler(BaseHandler):
     """Handles 404 errors."""
 
-    REQUIRE_PAYLOAD_CSRF_CHECK = False
+    pass
 
 
 class CsrfTokenManager(object):
@@ -571,6 +565,9 @@ class CsrfTokenManager(object):
         Args:
             user_id: str. The user_id to validate the CSRF token against.
             token: str. The CSRF token to validate.
+
+        Returns:
+            bool. Whether the given CSRF token is valid.
         """
         try:
             parts = token.split('/')

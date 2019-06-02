@@ -19,8 +19,8 @@ import logging
 import string
 
 from constants import constants
+from core.controllers import acl_decorators
 from core.controllers import base
-from core.domain import acl_decorators
 from core.domain import collection_services
 from core.domain import exp_services
 from core.domain import summary_services
@@ -76,25 +76,15 @@ class LibraryPage(base.BaseHandler):
         """Handles GET requests."""
         search_mode = 'search' in self.request.url
 
-        if search_mode:
-            page_mode = feconf.LIBRARY_PAGE_MODE_SEARCH
-        else:
-            page_mode = feconf.LIBRARY_PAGE_MODE_INDEX
-
         self.values.update({
             'meta_description': (
                 feconf.SEARCH_PAGE_DESCRIPTION if search_mode
                 else feconf.LIBRARY_PAGE_DESCRIPTION),
-            'nav_mode': feconf.NAV_MODE_LIBRARY,
             'has_fully_registered': bool(
                 self.user_id and
                 user_services.has_fully_registered(self.user_id)),
-            'LANGUAGE_CODES_AND_NAMES': (
-                utils.get_all_language_codes_and_names()),
-            'page_mode': page_mode,
-            'SEARCH_DROPDOWN_CATEGORIES': feconf.SEARCH_DROPDOWN_CATEGORIES,
         })
-        self.render_template('pages/library/library.html')
+        self.render_template('dist/library.html')
 
 
 class LibraryIndexHandler(base.BaseHandler):
@@ -122,23 +112,26 @@ class LibraryIndexHandler(base.BaseHandler):
             preferred_language_codes = user_settings.preferred_language_codes
 
         if top_rated_activity_summary_dicts:
-            summary_dicts_by_category.insert(0, {
-                'activity_summary_dicts': top_rated_activity_summary_dicts,
-                'categories': [],
-                'header_i18n_id': (
-                    feconf.LIBRARY_CATEGORY_TOP_RATED_EXPLORATIONS),
-                'has_full_results_page': True,
-                'full_results_url': feconf.LIBRARY_TOP_RATED_URL,
-                'protractor_id': 'top-rated',
-            })
+            summary_dicts_by_category.insert(
+                0, {
+                    'activity_summary_dicts': top_rated_activity_summary_dicts,
+                    'categories': [],
+                    'header_i18n_id': (
+                        feconf.LIBRARY_CATEGORY_TOP_RATED_EXPLORATIONS),
+                    'has_full_results_page': True,
+                    'full_results_url': feconf.LIBRARY_TOP_RATED_URL,
+                    'protractor_id': 'top-rated',
+                })
         if featured_activity_summary_dicts:
-            summary_dicts_by_category.insert(0, {
-                'activity_summary_dicts': featured_activity_summary_dicts,
-                'categories': [],
-                'header_i18n_id': feconf.LIBRARY_CATEGORY_FEATURED_ACTIVITIES,
-                'has_full_results_page': False,
-                'full_results_url': None,
-            })
+            summary_dicts_by_category.insert(
+                0, {
+                    'activity_summary_dicts': featured_activity_summary_dicts,
+                    'categories': [],
+                    'header_i18n_id': (
+                        feconf.LIBRARY_CATEGORY_FEATURED_ACTIVITIES),
+                    'has_full_results_page': False,
+                    'full_results_url': None,
+                })
 
         self.values.update({
             'activity_summary_dicts_by_category': (
@@ -160,20 +153,17 @@ class LibraryGroupPage(base.BaseHandler):
         self.values.update({
             'meta_description': (
                 feconf.LIBRARY_GROUP_PAGE_DESCRIPTION),
-            'nav_mode': feconf.NAV_MODE_LIBRARY,
             'has_fully_registered': bool(
                 self.user_id and
                 user_services.has_fully_registered(self.user_id)),
-            'LANGUAGE_CODES_AND_NAMES': (
-                utils.get_all_language_codes_and_names()),
-            'page_mode': feconf.LIBRARY_PAGE_MODE_GROUP,
-            'SEARCH_DROPDOWN_CATEGORIES': feconf.SEARCH_DROPDOWN_CATEGORIES,
         })
-        self.render_template('pages/library/library.html')
+        self.render_template('dist/library.html')
 
 
 class LibraryGroupIndexHandler(base.BaseHandler):
     """Provides data for categories such as top rated and recently published."""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
 
     @acl_decorators.open_access
     def get(self):

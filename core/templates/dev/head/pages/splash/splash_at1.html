@@ -1,11 +1,11 @@
-{% extends 'pages/base.html' %}
+{% extends 'dist/base.html' %}
 
 {% block prerender %}
   <link rel="prerender" href="/library">
 {% endblock prerender %}
 
 {% block maintitle %}
-  I18N_SPLASH_PAGE_TITLE
+  Oppia: Teach, Learn, Explore
 {% endblock maintitle %}
 
 {% block header_js %}
@@ -210,5 +210,13 @@
 
 {% block footer_js %}
   {{ super() }}
-  <script src="{{TEMPLATE_DIR_PREFIX}}/pages/splash/Splash.js"></script>
+  <!-- This code is used for inserting webpack bundles
+     https://github.com/jantimon/html-webpack-plugin#writing-your-own-templates -->
+  <% for (var chunk in htmlWebpackPlugin.files.js) { %>
+    <% if (webpackConfig.mode == 'production') { %>
+      <script src="/build/templates/head/dist/<%= htmlWebpackPlugin.files.js[chunk] %>"></script>
+    <% } else { %>
+      <script src="/dist/<%= htmlWebpackPlugin.files.js[chunk] %>"></script>
+    <% } %>
+  <% } %>
 {% endblock footer_js %}

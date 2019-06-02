@@ -21,10 +21,14 @@ from core.domain import collection_jobs_one_off
 from core.domain import email_jobs_one_off
 from core.domain import exp_jobs_one_off
 from core.domain import feedback_jobs_continuous
-from core.domain import feedback_jobs_one_off
+from core.domain import prod_validation_jobs_one_off
+from core.domain import question_jobs_one_off
 from core.domain import recommendations_jobs_one_off
+from core.domain import skill_jobs_one_off
 from core.domain import stats_jobs_continuous
 from core.domain import stats_jobs_one_off
+from core.domain import story_jobs_one_off
+from core.domain import topic_jobs_one_off
 from core.domain import user_jobs_continuous
 from core.domain import user_jobs_one_off
 
@@ -32,7 +36,7 @@ from core.domain import user_jobs_one_off
 # on the admin dashboard.
 ONE_OFF_JOB_MANAGERS = [
     activity_jobs_one_off.IndexAllActivitiesJobManager,
-    collection_jobs_one_off.CollectionMigrationJob,
+    collection_jobs_one_off.CollectionMigrationOneOffJob,
     email_jobs_one_off.EmailHashRegenerationOneOffJob,
     exp_jobs_one_off.ExpSummariesContributorsOneOffJob,
     exp_jobs_one_off.ExpSummariesCreationOneOffJob,
@@ -44,15 +48,31 @@ ONE_OFF_JOB_MANAGERS = [
     exp_jobs_one_off.HintsAuditOneOffJob,
     exp_jobs_one_off.ItemSelectionInteractionOneOffJob,
     exp_jobs_one_off.ViewableExplorationsAuditJob,
-    feedback_jobs_one_off.FeedbackThreadMessagesCountOneOffJob,
-    feedback_jobs_one_off.FeedbackSubjectOneOffJob,
+    exp_jobs_one_off.ExplorationContentValidationJobForCKEditor,
+    exp_jobs_one_off.InteractionCustomizationArgsValidationJob,
+    exp_jobs_one_off.CopyToNewDirectoryJob,
+    exp_jobs_one_off.ImagesAuditJob,
+    exp_jobs_one_off.VerifyAllUrlsMatchGcsIdRegexJob,
+    exp_jobs_one_off.TranslatorToVoiceArtistOneOffJob,
+    prod_validation_jobs_one_off.ProdValidationAuditOneOffJob,
+    question_jobs_one_off.QuestionMigrationOneOffJob,
     recommendations_jobs_one_off.ExplorationRecommendationsOneOffJob,
+    skill_jobs_one_off.SkillMigrationOneOffJob,
+    stats_jobs_one_off.PlaythroughAudit,
     stats_jobs_one_off.RecomputeStatisticsOneOffJob,
+    stats_jobs_one_off.RecomputeStatisticsValidationCopyOneOffJob,
+    stats_jobs_one_off.RegenerateMissingStatsModelsOneOffJob,
     stats_jobs_one_off.StatisticsAuditV1,
+    stats_jobs_one_off.StatisticsAuditV2,
     stats_jobs_one_off.StatisticsAudit,
+    story_jobs_one_off.StoryMigrationOneOffJob,
+    topic_jobs_one_off.TopicMigrationOneOffJob,
+    user_jobs_one_off.CleanupActivityIdsFromUserSubscriptionsModelOneOffJob,
     user_jobs_one_off.DashboardSubscriptionsOneOffJob,
     user_jobs_one_off.LongUserBiosOneOffJob,
     user_jobs_one_off.UserContributionsOneOffJob,
+    user_jobs_one_off.UserLanguageAuditOneOffJob,
+    user_jobs_one_off.UserLanguageResetOneOffJob,
     user_jobs_one_off.UserDefaultDashboardOneOffJob,
     user_jobs_one_off.UserFirstContributionMsecOneOffJob,
     user_jobs_one_off.UserLastExplorationActivityOneOffJob,

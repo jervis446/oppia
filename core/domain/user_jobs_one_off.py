@@ -29,6 +29,10 @@ import utils
     models.Registry.import_models([
         models.NAMES.exploration, models.NAMES.collection,
         models.NAMES.feedback, models.NAMES.user]))
+datastore_services = models.Registry.import_datastore_services()
+
+
+_LANGUAGES_TO_RESET = ['hu', 'mk', 'sv', 'tr', 'de', 'fr', 'nl', 'pt']
 
 
 class UserContributionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
@@ -43,10 +47,12 @@ class UserContributionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
     @staticmethod
     def map(item):
         """Implements the map function for this job."""
-        yield (item.committer_id, {
-            'exploration_id': item.get_unversioned_instance_id(),
-            'version_string': item.get_version_string(),
-        })
+        yield (
+            item.committer_id, {
+                'exploration_id': item.get_unversioned_instance_id(),
+                'version_string': item.get_version_string(),
+            })
+
 
     @staticmethod
     def reduce(key, version_and_exp_ids):
@@ -69,6 +75,73 @@ class UserContributionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
             user_services.create_user_contributions(
                 key, list(created_exploration_ids), list(
                     edited_exploration_ids))
+
+
+class UserLanguageAuditOneOffJob(jobs.BaseMapReduceOneOffJobManager):
+    """One-off job for auditing the default language preferences of users."""
+
+    _LANGUAGE_TO_RESET_KEY = 'WOULD_RESET'
+
+    @classmethod
+    def entity_classes_to_map_over(cls):
+        """Return a list of datastore class references to map over."""
+        return [user_models.UserSettingsModel]
+
+    @staticmethod
+    def map(item):
+        """Implements the map function for this job."""
+        if item.preferred_site_language_code in _LANGUAGES_TO_RESET:
+            affected_users_key = '%s.%s' % (
+                UserLanguageAuditOneOffJob._LANGUAGE_TO_RESET_KEY,
+                item.preferred_site_language_code)
+            yield (
+                affected_users_key, {
+                    'language_code': item.preferred_site_language_code,
+                    'user_id': item.id
+                })
+        yield (item.preferred_site_language_code, 1)
+
+    @staticmethod
+    def reduce(key_or_language_code, stringified_values):
+        """Implements the reduce function for this job."""
+        if key_or_language_code.startswith(
+                UserLanguageAuditOneOffJob._LANGUAGE_TO_RESET_KEY):
+            affected_users = [
+                ast.literal_eval(stringified_affected_user)
+                for stringified_affected_user in stringified_values]
+            language_code = affected_users[0]['language_code']
+            yield 'Users affected by a reset of %s: %s' % (
+                language_code,
+                [affected_user['user_id'] for affected_user in affected_users])
+        else:
+            yield '%d users are using language: %s' % (
+                len(stringified_values), key_or_language_code)
+
+
+class UserLanguageResetOneOffJob(jobs.BaseMapReduceOneOffJobManager):
+    """One-off job for resetting the default language preferences of users."""
+
+    @classmethod
+    def entity_classes_to_map_over(cls):
+        """Return a list of datastore class references to map over."""
+        return [user_models.UserSettingsModel]
+
+    @staticmethod
+    def map(item):
+        """Implements the map function for this job."""
+        if item.preferred_site_language_code in _LANGUAGES_TO_RESET:
+            # Reset the preferred site language for this user to None, which in
+            # turn defaults to English.
+            reset_language_code = item.preferred_site_language_code
+            item.preferred_site_language_code = None
+            item.put()
+            yield ('%s' % reset_language_code, 1)
+
+    @staticmethod
+    def reduce(reset_language_code, language_reset_indicators):
+        """Implements the reduce function for this job."""
+        yield 'Reset %d users for language: %s' % (
+            len(language_reset_indicators), reset_language_code)
 
 
 class UserDefaultDashboardOneOffJob(jobs.BaseMapReduceOneOffJobManager):
@@ -157,33 +230,35 @@ class DashboardSubscriptionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
         return [
             exp_models.ExplorationRightsModel,
             collection_models.CollectionRightsModel,
-            feedback_models.FeedbackMessageModel,
-        ]
+            feedback_models.GeneralFeedbackMessageModel]
 
     @staticmethod
     def map(item):
         """Implements the map function for this job."""
-        if isinstance(item, feedback_models.FeedbackMessageModel):
+        if isinstance(item, feedback_models.GeneralFeedbackMessageModel):
             if item.author_id:
-                yield (item.author_id, {
-                    'type': 'feedback',
-                    'id': item.thread_id
-                })
+                yield (
+                    item.author_id, {
+                        'type': 'feedback',
+                        'id': item.thread_id
+                    })
         elif isinstance(item, exp_models.ExplorationRightsModel):
             if item.deleted:
                 return
 
             if not item.community_owned:
                 for owner_id in item.owner_ids:
-                    yield (owner_id, {
-                        'type': 'exploration',
-                        'id': item.id
-                    })
+                    yield (
+                        owner_id, {
+                            'type': 'exploration',
+                            'id': item.id
+                        })
                 for editor_id in item.editor_ids:
-                    yield (editor_id, {
-                        'type': 'exploration',
-                        'id': item.id
-                    })
+                    yield (
+                        editor_id, {
+                            'type': 'exploration',
+                            'id': item.id
+                        })
             else:
                 # Go through the history.
                 current_version = item.version
@@ -193,15 +268,17 @@ class DashboardSubscriptionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
 
                     if not model.community_owned:
                         for owner_id in model.owner_ids:
-                            yield (owner_id, {
-                                'type': 'exploration',
-                                'id': item.id
-                            })
+                            yield (
+                                owner_id, {
+                                    'type': 'exploration',
+                                    'id': item.id
+                                })
                         for editor_id in model.editor_ids:
-                            yield (editor_id, {
-                                'type': 'exploration',
-                                'id': item.id
-                            })
+                            yield (
+                                editor_id, {
+                                    'type': 'exploration',
+                                    'id': item.id
+                                })
         elif isinstance(item, collection_models.CollectionRightsModel):
             # NOTE TO DEVELOPERS: Although the code handling subscribing to
             # collections is very similar to the code above for explorations,
@@ -215,15 +292,17 @@ class DashboardSubscriptionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
 
             if not item.community_owned:
                 for owner_id in item.owner_ids:
-                    yield (owner_id, {
-                        'type': 'collection',
-                        'id': item.id
-                    })
+                    yield (
+                        owner_id, {
+                            'type': 'collection',
+                            'id': item.id
+                        })
                 for editor_id in item.editor_ids:
-                    yield (editor_id, {
-                        'type': 'collection',
-                        'id': item.id
-                    })
+                    yield (
+                        editor_id, {
+                            'type': 'collection',
+                            'id': item.id
+                        })
             else:
                 # Go through the history.
                 current_version = item.version
@@ -234,15 +313,17 @@ class DashboardSubscriptionsOneOffJob(jobs.BaseMapReduceOneOffJobManager):
 
                     if not model.community_owned:
                         for owner_id in model.owner_ids:
-                            yield (owner_id, {
-                                'type': 'collection',
-                                'id': item.id
-                            })
+                            yield (
+                                owner_id, {
+                                    'type': 'collection',
+                                    'id': item.id
+                                })
                         for editor_id in model.editor_ids:
-                            yield (editor_id, {
-                                'type': 'collection',
-                                'id': item.id
-                            })
+                            yield (
+                                editor_id, {
+                                    'type': 'collection',
+                                    'id': item.id
+                                })
 
     @staticmethod
     def reduce(key, stringified_values):
@@ -384,3 +465,41 @@ class UserLastExplorationActivityOneOffJob(jobs.BaseMapReduceOneOffJobManager):
     def reduce(key, stringified_values):
         """Implements the reduce function for this job."""
         pass
+
+
+class CleanupActivityIdsFromUserSubscriptionsModelOneOffJob(
+        jobs.BaseMapReduceOneOffJobManager):
+    """One off job that removes nonexisting activity ids from
+    UserSubscriptionsModel.
+    """
+
+    @classmethod
+    def entity_classes_to_map_over(cls):
+        """Remove invalid ids in a UserSubscriptionsModel entity."""
+
+        return [user_models.UserSubscriptionsModel]
+
+    @staticmethod
+    def map(model_instance):
+        if not model_instance.deleted:
+            fetched_exploration_model_instances = (
+                datastore_services.fetch_multiple_entities_by_ids_and_models(
+                    [('ExplorationModel', model_instance.activity_ids)]))[0]
+
+            exp_ids_removed = []
+            for exp_id, exp_instance in zip(
+                    model_instance.activity_ids,
+                    fetched_exploration_model_instances):
+                if exp_instance is None or exp_instance.deleted:
+                    exp_ids_removed.append(exp_id)
+                    model_instance.activity_ids.remove(exp_id)
+            if exp_ids_removed:
+                model_instance.put()
+                yield (
+                    'Successfully cleaned up UserSubscriptionsModel %s and '
+                    'removed explorations %s' % (
+                        model_instance.id, str(exp_ids_removed)), 1)
+
+    @staticmethod
+    def reduce(key, values):
+        yield (key, len(values))

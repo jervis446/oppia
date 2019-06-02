@@ -16,6 +16,7 @@
 
 """Tests for classifier services."""
 
+import copy
 import datetime
 import os
 
@@ -38,11 +39,15 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
     test hard rules, ReaderClassifyTests is only checking that the string
     classifier is actually called.
     """
+
     def setUp(self):
         super(ClassifierServicesTests, self).setUp()
         self._init_classify_inputs('16')
 
     def _init_classify_inputs(self, exploration_id):
+        """Initializes all the classification inputs of the exploration
+        corresponding to the given exploration id.
+        """
         test_exp_filepath = os.path.join(
             feconf.TESTS_DATA_DIR, 'string_classifier_test.yaml')
         yaml_content = utils.get_file_contents(test_exp_filepath)
@@ -73,17 +78,24 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
         self.assertEqual(all_mappings.count(), 1)
 
         # Modify such that job creation is triggered.
-        state.interaction.answer_groups.insert(
-            3, state.interaction.answer_groups[1])
+        new_answer_group = copy.deepcopy(state.interaction.answer_groups[1])
+        new_answer_group.outcome.feedback.content_id = 'new_feedback'
+        state.recorded_voiceovers.voiceovers_mapping['new_feedback'] = {}
+        state.interaction.answer_groups.insert(3, new_answer_group)
         answer_groups = []
         for answer_group in state.interaction.answer_groups:
             answer_groups.append(answer_group.to_dict())
-        change_list = [{
+        change_list = [exp_domain.ExplorationChange({
             'cmd': 'edit_state_property',
             'state_name': 'Home',
             'property_name': 'answer_groups',
             'new_value': answer_groups
-        }]
+        }), exp_domain.ExplorationChange({
+            'cmd': 'edit_state_property',
+            'state_name': 'Home',
+            'property_name': 'recorded_voiceovers',
+            'new_value': state.recorded_voiceovers.to_dict()
+        })]
         with self.swap(feconf, 'ENABLE_ML_CLASSIFIERS', True):
             exp_services.update_exploration(
                 feconf.SYSTEM_COMMITTER_ID, self.exp_id, change_list, '')
@@ -97,11 +109,11 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
 
         # Make a change to the exploration without changing the answer groups
         # to trigger mapping update.
-        change_list = [{
+        change_list = [exp_domain.ExplorationChange({
             'cmd': 'edit_exploration_property',
             'property_name': 'title',
             'new_value': 'New title'
-        }]
+        })]
         with self.swap(feconf, 'ENABLE_ML_CLASSIFIERS', True):
             exp_services.update_exploration(
                 feconf.SYSTEM_COMMITTER_ID, self.exp_id, change_list, '')
@@ -114,15 +126,15 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
         self.assertEqual(all_mappings.count(), 3)
 
         # Check that renaming a state does not create an extra job.
-        change_list = [{
+        change_list = [exp_domain.ExplorationChange({
             'cmd': 'rename_state',
             'old_state_name': 'Home',
             'new_state_name': 'Home2'
-        }, {
+        }), exp_domain.ExplorationChange({
             'cmd': 'rename_state',
             'old_state_name': 'Home2',
             'new_state_name': 'Home3'
-        }]
+        })]
         with self.swap(feconf, 'ENABLE_ML_CLASSIFIERS', True):
             exp_services.update_exploration(
                 feconf.SYSTEM_COMMITTER_ID, self.exp_id, change_list, '')
@@ -160,11 +172,11 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
         exploration = exp_services.get_exploration_by_id(self.exp_id)
         next_scheduled_check_time = datetime.datetime.utcnow()
         state_names = ['Home']
-        change_list = [{
+        change_list = [exp_domain.ExplorationChange({
             'cmd': 'rename_state',
             'old_state_name': 'Old home',
             'new_state_name': 'Home'
-        }]
+        })]
         exp_versions_diff = exp_domain.ExplorationVersionsDiff(change_list)
 
         # Test that Exception is raised if this method is called with version
@@ -189,11 +201,11 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
         # Create job and mapping for previous version.
         job_id = classifier_models.ClassifierTrainingJobModel.create(
             feconf.INTERACTION_CLASSIFIER_MAPPING['TextInput']['algorithm_id'],
-            'TextInput', self.exp_id, exploration.version-1,
+            'TextInput', self.exp_id, exploration.version - 1,
             next_scheduled_check_time, [], 'Old home',
             feconf.TRAINING_JOB_STATUS_COMPLETE, None, 1)
         classifier_models.TrainingJobExplorationMappingModel.create(
-            self.exp_id, exploration.version-1, 'Old home', job_id)
+            self.exp_id, exploration.version - 1, 'Old home', job_id)
         classifier_services.handle_non_retrainable_states(
             exploration, state_names, exp_versions_diff)
 
@@ -230,18 +242,21 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
             state_name, feconf.TRAINING_JOB_STATUS_NEW, {}, 1)
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.algorithm_id,
-                         feconf.INTERACTION_CLASSIFIER_MAPPING['TextInput'][
-                             'algorithm_id'])
+        self.assertEqual(
+            classifier_training_job.algorithm_id,
+            feconf.INTERACTION_CLASSIFIER_MAPPING['TextInput'][
+                'algorithm_id'])
         self.assertEqual(classifier_training_job.interaction_id, interaction_id)
         self.assertEqual(classifier_training_job.exp_id, exp_id)
         self.assertEqual(classifier_training_job.exp_version, 1)
-        self.assertEqual(classifier_training_job.next_scheduled_check_time,
-                         next_scheduled_check_time)
+        self.assertEqual(
+            classifier_training_job.next_scheduled_check_time,
+            next_scheduled_check_time)
         self.assertEqual(classifier_training_job.training_data, [])
         self.assertEqual(classifier_training_job.state_name, state_name)
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_NEW)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_NEW)
         self.assertEqual(classifier_training_job.classifier_data, {})
         self.assertEqual(classifier_training_job.data_schema_version, 1)
 
@@ -261,7 +276,7 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
         classifier_services.delete_classifier_training_job(job_id)
         with self.assertRaisesRegexp(Exception, (
             'Entity for class ClassifierTrainingJobModel '
-            'with id %s not found' %(
+            'with id %s not found' % (
                 job_id))):
             classifier_services.get_classifier_training_job_by_id(job_id)
 
@@ -279,15 +294,17 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_PENDING)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_PENDING)
 
         classifier_services.mark_training_job_complete(job_id)
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_COMPLETE)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_COMPLETE)
 
         # Test that invalid status changes cannot be made.
         with self.assertRaisesRegexp(Exception, (
@@ -311,15 +328,17 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_NEW)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_NEW)
 
         classifier_services.mark_training_job_pending(job_id)
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_PENDING)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_PENDING)
 
         # Test that invalid status changes cannot be made.
         with self.assertRaisesRegexp(Exception, (
@@ -343,15 +362,17 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_PENDING)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_PENDING)
 
         classifier_services.mark_training_jobs_failed([job_id])
 
         classifier_training_job = (
             classifier_services.get_classifier_training_job_by_id(job_id))
-        self.assertEqual(classifier_training_job.status,
-                         feconf.TRAINING_JOB_STATUS_FAILED)
+        self.assertEqual(
+            classifier_training_job.status,
+            feconf.TRAINING_JOB_STATUS_FAILED)
 
         # Test that invalid status changes cannot be made.
         with self.assertRaisesRegexp(Exception, (
@@ -435,3 +456,83 @@ class ClassifierServicesTests(test_utils.GenericTestBase):
             classifier_services.get_classifier_training_jobs(
                 exp_id, 1, [false_state_name]))
         self.assertEqual(classifier_training_jobs, [None])
+
+    def test_convert_strings_to_float_numbers_in_classifier_data(self):
+        """Make sure that all values are converted correctly."""
+        test_dict = {
+            'a': {
+                'ab': 'abcd',
+                'ad': {
+                    'ada': 'abcdef',
+                    'adc': [{
+                        'adca': 'abcd',
+                        'adcb': '0.1234',
+                        'adcc': ['ade', 'afd'],
+                    }],
+                },
+                'ae': [['123', '0.123'], ['abc']],
+            },
+            'b': {
+                'bd': ['-2.48521656693', '-2.48521656693', '-2.48521656693'],
+                'bg': ['abc', 'def', 'ghi'],
+                'bh': ['abc', '123'],
+            },
+            'c': '1.123432',
+        }
+
+        expected_dict = {
+            'a': {
+                'ab': 'abcd',
+                'ad': {
+                    'ada': 'abcdef',
+                    'adc': [{
+                        'adca': 'abcd',
+                        'adcb': 0.1234,
+                        'adcc': ['ade', 'afd']
+                    }]
+                },
+                'ae': [['123', 0.123], ['abc']],
+            },
+            'b': {
+                'bd': [-2.48521656693, -2.48521656693, -2.48521656693],
+                'bg': ['abc', 'def', 'ghi'],
+                'bh': ['abc', '123'],
+            },
+            'c': 1.123432,
+        }
+
+        output_dict = (
+            classifier_services.convert_strings_to_float_numbers_in_classifier_data( #pylint: disable=line-too-long
+                test_dict))
+        self.assertDictEqual(expected_dict, output_dict)
+
+    def test_can_not_convert_strings_to_float_numbers_in_classifier_data(self):
+        with self.assertRaisesRegexp(
+            Exception, 'Expected all classifier data objects to be '
+            'lists, dicts, strings, integers but received'):
+            (classifier_services.
+             convert_strings_to_float_numbers_in_classifier_data(2.0124))
+
+    def test_can_not_mark_training_jobs_complete_due_to_invalid_job_id(self):
+        with self.assertRaisesRegexp(
+            Exception, 'The ClassifierTrainingJobModel corresponding to the '
+            'job_id of the ClassifierTrainingJob does not exist.'):
+            classifier_services.mark_training_job_complete('invalid_job_id')
+
+    def test_can_not_mark_training_jobs_failed_due_to_invalid_job_id(self):
+        with self.assertRaisesRegexp(
+            Exception, 'The ClassifierTrainingJobModel corresponding to the '
+            'job_id of the ClassifierTrainingJob does not exist.'):
+            classifier_services.mark_training_jobs_failed(['invalid_job_id'])
+
+    def test_can_not_mark_training_jobs_pending_due_to_invalid_job_id(self):
+        with self.assertRaisesRegexp(
+            Exception, 'The ClassifierTrainingJobModel corresponding to the '
+            'job_id of the ClassifierTrainingJob does not exist.'):
+            classifier_services.mark_training_job_pending('invalid_job_id')
+
+    def test_can_not_store_classifier_data_due_to_invalid_job_id(self):
+        with self.assertRaisesRegexp(
+            Exception, 'The ClassifierTrainingJobModel corresponding to the '
+            'job_id of the ClassifierTrainingJob does not exist.'):
+            classifier_services.store_classifier_data('invalid_job_id', {})

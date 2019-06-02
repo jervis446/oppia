@@ -16,6 +16,7 @@
 
 """Services for tracking the progress of the learner."""
 
+from constants import constants
 from core.domain import collection_services
 from core.domain import exp_services
 from core.domain import learner_playlist_services
@@ -23,7 +24,6 @@ from core.domain import learner_progress_domain
 from core.domain import subscription_services
 from core.domain import user_domain
 from core.platform import models
-import feconf
 import utils
 
 (user_models,) = models.Registry.import_models([models.NAMES.user])
@@ -344,15 +344,17 @@ def add_collection_to_learner_playlist(
 
         (playlist_limit_exceeded, belongs_to_subscribed_activities) = (
             learner_playlist_services.mark_collection_to_be_played_later(
-                user_id, collection_id, position_to_be_inserted))
+                user_id, collection_id,
+                position_to_be_inserted=position_to_be_inserted))
 
         belongs_to_completed_or_incomplete_list = False
     else:
         belongs_to_completed_or_incomplete_list = True
 
-    return (belongs_to_completed_or_incomplete_list,
-            playlist_limit_exceeded,
-            belongs_to_subscribed_activities)
+    return (
+        belongs_to_completed_or_incomplete_list,
+        playlist_limit_exceeded,
+        belongs_to_subscribed_activities)
 
 
 def add_exp_to_learner_playlist(
@@ -388,20 +390,22 @@ def add_exp_to_learner_playlist(
 
         (playlist_limit_exceeded, belongs_to_subscribed_activities) = (
             learner_playlist_services.mark_exploration_to_be_played_later(
-                user_id, exploration_id, position_to_be_inserted))
+                user_id, exploration_id,
+                position_to_be_inserted=position_to_be_inserted))
 
         belongs_to_completed_or_incomplete_list = False
 
     else:
         belongs_to_completed_or_incomplete_list = True
 
-    return (belongs_to_completed_or_incomplete_list,
-            playlist_limit_exceeded,
-            belongs_to_subscribed_activities)
+    return (
+        belongs_to_completed_or_incomplete_list,
+        playlist_limit_exceeded,
+        belongs_to_subscribed_activities)
 
 
-def _remove_activity_ids_from_playlist(user_id, exploration_ids,
-                                       collection_ids):
+def _remove_activity_ids_from_playlist(
+        user_id, exploration_ids, collection_ids):
     """Removes the explorations and collections from the playlist of the user.
 
     Args:
@@ -426,26 +430,6 @@ def _remove_activity_ids_from_playlist(user_id, exploration_ids,
         learner_playlist_services.save_learner_playlist(learner_playlist)
 
 
-def remove_exp_from_completed_list(user_id, exploration_id):
-    """Removes the exploration from the completed list of the user
-    (if present).
-
-    Args:
-        user_id: str. The id of the user.
-        exploration_id: str. The id of the exploration to be removed.
-    """
-    completed_activities_model = (
-        user_models.CompletedActivitiesModel.get(
-            user_id, strict=False))
-
-    if completed_activities_model:
-        activities_completed = _get_completed_activities_from_model(
-            completed_activities_model)
-        if exploration_id in activities_completed.exploration_ids:
-            activities_completed.remove_exploration_id(exploration_id)
-            _save_completed_activities(activities_completed)
-
-
 def remove_collection_from_completed_list(user_id, collection_id):
     """Removes the collection id from the list of completed collections
     (if present).
@@ -466,8 +450,8 @@ def remove_collection_from_completed_list(user_id, collection_id):
             _save_completed_activities(activities_completed)
 
 
-def _remove_activity_ids_from_completed_list(user_id, exploration_ids,
-                                             collection_ids):
+def _remove_activity_ids_from_completed_list(
+        user_id, exploration_ids, collection_ids):
     """Removes the explorations and collections from the completed list of the
     learner.
 
@@ -543,8 +527,8 @@ def _remove_activity_ids_from_incomplete_list(user_id, exploration_ids=None,
 
     Args:
         user_id: str. The id of the user.
-        collection_ids: list(str). The ids of the collections to be removed.
         exploration_ids: list(str). The ids of the explorations to be removed.
+        collection_ids: list(str). The ids of the collections to be removed.
     """
     incomplete_activities_model = (
         user_models.IncompleteActivitiesModel.get(
@@ -587,8 +571,8 @@ def get_all_completed_exp_ids(user_id):
         return []
 
 
-def _get_filtered_completed_exp_summaries(exploration_summaries,
-                                          exploration_ids):
+def _get_filtered_completed_exp_summaries(
+        exploration_summaries, exploration_ids):
     """Returns a list of summaries of the completed exploration ids and the
     ids of explorations that are no longer present.
 
@@ -609,7 +593,7 @@ def _get_filtered_completed_exp_summaries(exploration_summaries,
     for index, exploration_summary in enumerate(exploration_summaries):
         if exploration_summary is None:
             nonexistent_completed_exp_ids.append(exploration_ids[index])
-        elif exploration_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif exploration_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_completed_exp_ids.append(exploration_ids[index])
         else:
             filtered_completed_exp_summaries.append(exploration_summary)
@@ -641,8 +625,8 @@ def get_all_completed_collection_ids(user_id):
         return []
 
 
-def _get_filtered_completed_collection_summaries(user_id, collection_summaries,
-                                                 collection_ids):
+def _get_filtered_completed_collection_summaries(
+        user_id, collection_summaries, collection_ids):
     """Returns a list of summaries of the completed collection ids, the ids
     of collections that are no longer present and the summaries of the
     collections being shifted to the incomplete section on account of new
@@ -678,7 +662,7 @@ def _get_filtered_completed_collection_summaries(user_id, collection_summaries,
     for index, collection_summary in enumerate(collection_summaries):
         if collection_summary is None:
             nonexistent_completed_collection_ids.append(collection_ids[index])
-        elif collection_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif collection_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_completed_collection_ids.append(collection_ids[index])
         else:
             completed_exploration_ids = (
@@ -694,9 +678,10 @@ def _get_filtered_completed_collection_summaries(user_id, collection_summaries,
                 filtered_completed_collection_summaries.append(
                     collection_summary)
 
-    return (filtered_completed_collection_summaries,
-            nonexistent_completed_collection_ids,
-            completed_to_incomplete_collections)
+    return (
+        filtered_completed_collection_summaries,
+        nonexistent_completed_collection_ids,
+        completed_to_incomplete_collections)
 
 
 def get_all_incomplete_exp_ids(user_id):
@@ -723,8 +708,8 @@ def get_all_incomplete_exp_ids(user_id):
         return []
 
 
-def _get_filtered_incomplete_exp_summaries(exploration_summaries,
-                                           exploration_ids):
+def _get_filtered_incomplete_exp_summaries(
+        exploration_summaries, exploration_ids):
     """Returns a list of summaries of the incomplete exploration ids and the ids
     of explorations that are no longer present.
 
@@ -745,7 +730,7 @@ def _get_filtered_incomplete_exp_summaries(exploration_summaries,
     for index, exploration_summary in enumerate(exploration_summaries):
         if exploration_summary is None:
             nonexistent_incomplete_exp_ids.append(exploration_ids[index])
-        elif exploration_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif exploration_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_incomplete_exp_ids.append(exploration_ids[index])
         else:
             filtered_incomplete_exp_summaries.append(exploration_summary)
@@ -776,8 +761,8 @@ def get_all_incomplete_collection_ids(user_id):
         return []
 
 
-def _get_filtered_incomplete_collection_summaries(collection_summaries,
-                                                  collection_ids):
+def _get_filtered_incomplete_collection_summaries(
+        collection_summaries, collection_ids):
     """Returns a list of summaries of the incomplete collection ids and the ids
     of collections that are no longer present.
 
@@ -798,17 +783,18 @@ def _get_filtered_incomplete_collection_summaries(collection_summaries,
     for index, collection_summary in enumerate(collection_summaries):
         if collection_summary is None:
             nonexistent_incomplete_collection_ids.append(collection_ids[index])
-        elif collection_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif collection_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_incomplete_collection_ids.append(collection_ids[index])
         else:
             filtered_incomplete_collection_summaries.append(collection_summary)
 
-    return (filtered_incomplete_collection_summaries,
-            nonexistent_incomplete_collection_ids)
+    return (
+        filtered_incomplete_collection_summaries,
+        nonexistent_incomplete_collection_ids)
 
 
-def _get_filtered_exp_playlist_summaries(exploration_summaries,
-                                         exploration_ids):
+def _get_filtered_exp_playlist_summaries(
+        exploration_summaries, exploration_ids):
     """Returns a list of summaries of the explorations in the learner playlist
     and the ids of explorations that are no longer present.
 
@@ -829,7 +815,7 @@ def _get_filtered_exp_playlist_summaries(exploration_summaries,
     for index, exploration_summary in enumerate(exploration_summaries):
         if exploration_summary is None:
             nonexistent_playlist_exp_ids.append(exploration_ids[index])
-        elif exploration_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif exploration_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_playlist_exp_ids.append(exploration_ids[index])
         else:
             filtered_exp_playlist_summaries.append(exploration_summary)
@@ -837,8 +823,8 @@ def _get_filtered_exp_playlist_summaries(exploration_summaries,
     return filtered_exp_playlist_summaries, nonexistent_playlist_exp_ids
 
 
-def _get_filtered_collection_playlist_summaries(collection_summaries,
-                                                collection_ids):
+def _get_filtered_collection_playlist_summaries(
+        collection_summaries, collection_ids):
     """Returns a list of summaries of the collections in the learner playlist
     and the ids of collections that are no longer present.
 
@@ -859,13 +845,14 @@ def _get_filtered_collection_playlist_summaries(collection_summaries,
     for index, collection_summary in enumerate(collection_summaries):
         if collection_summary is None:
             nonexistent_playlist_collection_ids.append(collection_ids[index])
-        elif collection_summary.status != feconf.ACTIVITY_STATUS_PUBLIC:
+        elif collection_summary.status != constants.ACTIVITY_STATUS_PUBLIC:
             nonexistent_playlist_collection_ids.append(collection_ids[index])
         else:
             filtered_collection_playlist_summaries.append(collection_summary)
 
-    return (filtered_collection_playlist_summaries,
-            nonexistent_playlist_collection_ids)
+    return (
+        filtered_collection_playlist_summaries,
+        nonexistent_playlist_collection_ids)
 
 
 def get_collection_summary_dicts(collection_summaries):
@@ -1047,11 +1034,13 @@ def get_activity_progress(user_id):
         _get_filtered_completed_exp_summaries(
             completed_exp_summaries, completed_exploration_ids))
 
-    (filtered_completed_collection_summaries,
-     nonexistent_completed_collection_ids,
-     completed_to_incomplete_collection_summaries) = (
-         _get_filtered_completed_collection_summaries(
-             user_id, completed_collection_summaries, completed_collection_ids))
+    (
+        filtered_completed_collection_summaries,
+        nonexistent_completed_collection_ids,
+        completed_to_incomplete_collection_summaries) = (
+            _get_filtered_completed_collection_summaries(
+                user_id, completed_collection_summaries,
+                completed_collection_ids))
 
     completed_to_incomplete_collection_titles = []
     for collection_summary in completed_to_incomplete_collection_summaries:
@@ -1060,19 +1049,21 @@ def get_activity_progress(user_id):
             collection_summary.title)
         incomplete_collection_ids.append(collection_summary.id)
 
-    (filtered_incomplete_collection_summaries,
-     nonexistent_incomplete_collection_ids) = (
-         _get_filtered_incomplete_collection_summaries(
-             incomplete_collection_summaries, incomplete_collection_ids))
+    (
+        filtered_incomplete_collection_summaries,
+        nonexistent_incomplete_collection_ids) = (
+            _get_filtered_incomplete_collection_summaries(
+                incomplete_collection_summaries, incomplete_collection_ids))
 
     filtered_exp_playlist_summaries, nonexistent_playlist_exp_ids = (
         _get_filtered_exp_playlist_summaries(
             exploration_playlist_summaries, exploration_playlist_ids))
 
-    (filtered_collection_playlist_summaries,
-     nonexistent_playlist_collection_ids) = (
-         _get_filtered_collection_playlist_summaries(
-             collection_playlist_summaries, collection_playlist_ids))
+    (
+        filtered_collection_playlist_summaries,
+        nonexistent_playlist_collection_ids) = (
+            _get_filtered_collection_playlist_summaries(
+                collection_playlist_summaries, collection_playlist_ids))
 
     number_of_nonexistent_activities = {
         'incomplete_explorations': len(nonexistent_incomplete_exp_ids),
@@ -1084,8 +1075,9 @@ def get_activity_progress(user_id):
     }
 
     _remove_activity_ids_from_incomplete_list(
-        user_id, nonexistent_incomplete_exp_ids,
-        nonexistent_incomplete_collection_ids)
+        user_id,
+        exploration_ids=nonexistent_incomplete_exp_ids,
+        collection_ids=nonexistent_incomplete_collection_ids)
     _remove_activity_ids_from_completed_list(
         user_id, nonexistent_completed_exp_ids,
         nonexistent_completed_collection_ids)
@@ -1101,5 +1093,6 @@ def get_activity_progress(user_id):
         filtered_exp_playlist_summaries,
         filtered_collection_playlist_summaries)
 
-    return (learner_progress, number_of_nonexistent_activities,
-            completed_to_incomplete_collection_titles)
+    return (
+        learner_progress, number_of_nonexistent_activities,
+        completed_to_incomplete_collection_titles)

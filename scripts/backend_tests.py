@@ -34,7 +34,7 @@ import time
 
 
 COVERAGE_PATH = os.path.join(
-    os.getcwd(), '..', 'oppia_tools', 'coverage-4.0', 'coverage')
+    os.getcwd(), '..', 'oppia_tools', 'coverage-4.5.1', 'coverage')
 TEST_RUNNER_PATH = os.path.join(os.getcwd(), 'core', 'tests', 'gae_suite.py')
 LOG_LOCK = threading.Lock()
 ALL_ERRORS = []
@@ -93,7 +93,7 @@ def run_shell_cmd(exe, stdout=subprocess.PIPE, stderr=subprocess.PIPE):
         log('')
         for line in last_stdout:
             if line.startswith(LOG_LINE_PREFIX):
-                log('INFO: %s' % line[len(LOG_LINE_PREFIX): ])
+                log('INFO: %s' % line[len(LOG_LINE_PREFIX):])
         log('')
 
     result = '%s%s' % (last_stdout_str, last_stderr_str)
@@ -215,8 +215,9 @@ def _get_all_test_targets(test_path=None, include_load_tests=True):
 
     base_path = os.path.join(os.getcwd(), test_path or '')
     result = []
+    excluded_dirs = ['.git', 'third_party', 'core/tests', 'node_modules']
     for root in os.listdir(base_path):
-        if any([s in root for s in ['.git', 'third_party', 'core/tests']]):
+        if any([s in root for s in excluded_dirs]):
             continue
         if root.endswith('_test.py'):
             result.append(_convert_to_test_target(
@@ -249,7 +250,17 @@ def main():
         raise Exception('The delimiter in test_target should be a dot (.)')
 
     if parsed_args.test_target:
-        all_test_targets = [parsed_args.test_target]
+        if '_test' in parsed_args.test_target:
+            all_test_targets = [parsed_args.test_target]
+        else:
+            print ''
+            print '---------------------------------------------------------'
+            print 'WARNING : test_target flag should point to the test file.'
+            print '---------------------------------------------------------'
+            print ''
+            time.sleep(3)
+            print 'Redirecting to its corresponding test file...'
+            all_test_targets = [parsed_args.test_target + '_test']
     else:
         include_load_tests = not parsed_args.exclude_load_tests
         all_test_targets = _get_all_test_targets(
@@ -296,8 +307,8 @@ def main():
             print 'ERROR     %s: No tests found.' % spec.test_target
             test_count = 0
         elif task.exception:
-            exc_str = str(task.exception).decode('utf-8')
-            print exc_str[exc_str.find('=') : exc_str.rfind('-')]
+            exc_str = str(task.exception).decode(encoding='utf-8')
+            print exc_str[exc_str.find('='): exc_str.rfind('-')]
 
             tests_failed_regex_match = re.search(
                 r'Test suite failed: ([0-9]+) tests run, ([0-9]+) errors, '
@@ -316,9 +327,10 @@ def main():
                 # There was an internal error, and the tests did not run (The
                 # error message did not match `tests_failed_regex_match`).
                 test_count = 0
+                total_errors += 1
                 print ''
                 print '------------------------------------------------------'
-                print '    WARNING: FAILED TO RUN TESTS.'
+                print '    WARNING: FAILED TO RUN %s' % spec.test_target
                 print ''
                 print '    This is most likely due to an import error.'
                 print '------------------------------------------------------'

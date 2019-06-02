@@ -18,6 +18,7 @@ import os
 
 import constants  # pylint: disable=relative-import
 from core.tests import test_utils  # pylint: disable=relative-import
+import feconf  # pylint: disable=relative-import
 
 
 class ConstantsTests(test_utils.GenericTestBase):
@@ -33,3 +34,32 @@ class ConstantsTests(test_utils.GenericTestBase):
             json = constants.parse_json_from_js(f)
             self.assertTrue(isinstance(json, dict))
             self.assertEqual(json['TESTING_CONSTANT'], 'test')
+
+    def test_constants_and_feconf_are_consistent(self):
+        """Test if constants that are related are consistent between feconf and
+        constants.js.
+        """
+        self.assertIn(
+            feconf.MIGRATION_BOT_USER_ID, constants.constants.SYSTEM_USER_IDS)
+        self.assertIn(
+            feconf.SYSTEM_COMMITTER_ID, constants.constants.SYSTEM_USER_IDS)
+        self.assertEqual(len(constants.constants.SYSTEM_USER_IDS), 2)
+
+    def test_all_comments_are_removed_from_json_text(self):
+        """Tests if comments are removed from json text."""
+        with open(os.path.join(
+            feconf.TESTS_DATA_DIR, 'dummy_constants.js'), 'r') as f:
+            actual_text_without_comments = constants.remove_comments(f.read())
+            expected_text_without_comments = (
+                'var dummy_constants = {\n'
+                '  "File_purpose": "This file is for testing comments '
+                'removal",\n\n'
+                '  "Dummy_constant": "Simple constant",\n\n'
+                '  "Dummy_list_constant": ["List", "of", "dummy", '
+                '"constants"],\n\n'
+                '  "Dummy_constant_without_comment": '
+                '"Dummy constant with no comment"\n'
+                '};\n')
+
+            self.assertEqual(
+                actual_text_without_comments, expected_text_without_comments)

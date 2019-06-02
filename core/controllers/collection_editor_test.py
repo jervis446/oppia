@@ -16,17 +16,18 @@
 
 from core.domain import collection_domain
 from core.domain import collection_services
+from core.domain import exp_services
 from core.domain import rights_manager
 from core.domain import user_services
 from core.tests import test_utils
 import feconf
 
 
-class BaseCollectionEditorControllerTest(test_utils.GenericTestBase):
+class BaseCollectionEditorControllerTests(test_utils.GenericTestBase):
 
     def setUp(self):
         """Completes the sign-up process for self.EDITOR_EMAIL."""
-        super(BaseCollectionEditorControllerTest, self).setUp()
+        super(BaseCollectionEditorControllerTests, self).setUp()
         self.signup(self.EDITOR_EMAIL, self.EDITOR_USERNAME)
         self.signup(self.ADMIN_EMAIL, self.ADMIN_USERNAME)
         self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
@@ -43,9 +44,9 @@ class BaseCollectionEditorControllerTest(test_utils.GenericTestBase):
         self.admin = user_services.UserActionsInfo(self.admin_id)
 
         self.json_dict = {
-            'version' : 1,
-            'commit_message' : 'changed title',
-            'change_list' : [{
+            'version': 1,
+            'commit_message': 'changed title',
+            'change_list': [{
                 'cmd': 'edit_collection_property',
                 'property_name': 'title',
                 'new_value': 'A new title'
@@ -53,11 +54,11 @@ class BaseCollectionEditorControllerTest(test_utils.GenericTestBase):
         }
 
 
-class CollectionEditorTest(BaseCollectionEditorControllerTest):
+class CollectionEditorTests(BaseCollectionEditorControllerTests):
     COLLECTION_ID = '0'
 
     def setUp(self):
-        super(CollectionEditorTest, self).setUp()
+        super(CollectionEditorTests, self).setUp()
         system_user = user_services.get_system_user()
 
         collection_services.load_demo(self.COLLECTION_ID)
@@ -71,24 +72,24 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
 
         # Check that it is possible to access a page with specific version
         # number.
-        response = self.testapp.get(
-            '%s/%s?v=1' % (feconf.COLLECTION_DATA_URL_PREFIX,
-                           self.COLLECTION_ID))
-        self.assertEqual(response.status_int, 200)
+        self.get_json(
+            '%s/%s?v=1' % (
+                feconf.COLLECTION_DATA_URL_PREFIX,
+                self.COLLECTION_ID))
 
         # Check that non-editors cannot access the editor page. This is due
         # to them not being whitelisted.
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_EDITOR_URL_PREFIX,
-                       self.COLLECTION_ID))
-        self.assertEqual(response.status_int, 302)
+        self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_URL_PREFIX,
+                self.COLLECTION_ID), expected_status_int=302)
 
         # Check that whitelisted users can access and edit in the editor page.
         self.login(self.EDITOR_EMAIL)
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_EDITOR_URL_PREFIX,
-                       self.COLLECTION_ID))
-        self.assertEqual(response.status_int, 200)
+        self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_URL_PREFIX,
+                self.COLLECTION_ID))
 
         json_response = self.get_json(
             '%s/%s' % (feconf.COLLECTION_RIGHTS_PREFIX, self.COLLECTION_ID))
@@ -101,19 +102,66 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
 
         # Check that non-editors cannot access the editor data handler.
         # This is due to them not being whitelisted.
-        response = self.testapp.get(
-            '%s/%s' % (feconf.EDITABLE_COLLECTION_DATA_URL_PREFIX,
-                       self.COLLECTION_ID))
-        self.assertEqual(response.status_int, 302)
+        self.get_json(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID), expected_status_int=401)
 
         # Check that whitelisted users can access the data
         # from the editable_collection_data_handler.
         self.login(self.EDITOR_EMAIL)
 
         json_response = self.get_json(
-            '%s/%s' % (feconf.EDITABLE_COLLECTION_DATA_URL_PREFIX,
-                       self.COLLECTION_ID))
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID))
         self.assertEqual(self.COLLECTION_ID, json_response['collection']['id'])
+        self.logout()
+
+    def test_editable_collection_handler_put_with_invalid_payload_version(self):
+        whitelisted_usernames = [self.EDITOR_USERNAME, self.VIEWER_USERNAME]
+        self.set_collection_editors(whitelisted_usernames)
+
+        rights_manager.create_new_collection_rights(
+            self.COLLECTION_ID, self.owner_id)
+        rights_manager.assign_role_for_collection(
+            self.admin, self.COLLECTION_ID, self.editor_id,
+            rights_manager.ROLE_EDITOR)
+        rights_manager.publish_collection(self.owner, self.COLLECTION_ID)
+
+        self.login(self.EDITOR_EMAIL)
+
+        # Call get handler to return the csrf token.
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX,
+                self.COLLECTION_ID))
+        csrf_token = self.get_csrf_token_from_response(response)
+
+        # Raises error as version is None.
+        json_response = self.put_json(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID),
+            {'version': None}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            json_response['error'],
+            'Invalid POST request: a version must be specified.')
+
+        # Raises error as version from payload does not match the collection
+        # version.
+        json_response = self.put_json(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID),
+            {'version': 2}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            json_response['error'],
+            'Trying to update version 1 of collection from version 2, '
+            'which is too old. Please reload the page and try again.')
+
         self.logout()
 
     def test_editable_collection_handler_put_cannot_access(self):
@@ -132,19 +180,20 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
         self.login(self.VIEWER_EMAIL)
 
         # Call get handler to return the csrf token.
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_URL_PREFIX,
-                       self.COLLECTION_ID))
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX,
+                self.COLLECTION_ID))
         csrf_token = self.get_csrf_token_from_response(response)
 
         # Ensure viewers do not have access to the PUT Handler.
-        json_response = self.put_json(
-            '%s/%s' % (feconf.EDITABLE_COLLECTION_DATA_URL_PREFIX,
-                       self.COLLECTION_ID),
-            self.json_dict, expect_errors=True,
-            csrf_token=csrf_token, expected_status_int=401)
+        self.put_json(
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID),
+            self.json_dict, csrf_token=csrf_token,
+            expected_status_int=401)
 
-        self.assertEqual(json_response['status_code'], 401)
         self.logout()
 
     def test_editable_collection_handler_put_can_access(self):
@@ -162,24 +211,28 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
         self.login(self.EDITOR_EMAIL)
 
         # Call get handler to return the csrf token.
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_URL_PREFIX,
-                       self.COLLECTION_ID))
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX,
+                self.COLLECTION_ID))
         csrf_token = self.get_csrf_token_from_response(response)
 
         json_response = self.put_json(
-            '%s/%s' % (feconf.EDITABLE_COLLECTION_DATA_URL_PREFIX,
-                       self.COLLECTION_ID),
+            '%s/%s' % (
+                feconf.COLLECTION_EDITOR_DATA_URL_PREFIX,
+                self.COLLECTION_ID),
             self.json_dict, csrf_token=csrf_token)
 
         self.assertEqual(self.COLLECTION_ID, json_response['collection']['id'])
         self.assertEqual(2, json_response['collection']['version'])
+
         self.logout()
 
     def test_collection_rights_handler(self):
         collection_id = 'collection_id'
         collection = collection_domain.Collection.create_default_collection(
-            collection_id, 'A title', 'A Category', 'An Objective')
+            collection_id, title='A title',
+            category='A Category', objective='An Objective')
         collection_services.save_new_collection(self.owner_id, collection)
 
         # Check that collection is published correctly.
@@ -193,14 +246,16 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
             Exception, 'This collection cannot be unpublished.'):
             rights_manager.unpublish_collection(self.owner, collection_id)
         collection_rights = rights_manager.get_collection_rights(collection_id)
-        self.assertEqual(collection_rights.status,
-                         rights_manager.ACTIVITY_STATUS_PUBLIC)
+        self.assertEqual(
+            collection_rights.status,
+            rights_manager.ACTIVITY_STATUS_PUBLIC)
 
         # Check that collection can be unpublished by admin.
         rights_manager.unpublish_collection(self.admin, collection_id)
         collection_rights = rights_manager.get_collection_rights(collection_id)
-        self.assertEqual(collection_rights.status,
-                         rights_manager.ACTIVITY_STATUS_PRIVATE)
+        self.assertEqual(
+            collection_rights.status,
+            rights_manager.ACTIVITY_STATUS_PRIVATE)
 
     def test_get_collection_rights(self):
         whitelisted_usernames = [self.OWNER_USERNAME]
@@ -210,7 +265,8 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
 
         collection_id = 'collection_id'
         collection = collection_domain.Collection.create_default_collection(
-            collection_id, 'A title', 'A Category', 'An Objective')
+            collection_id, title='A title',
+            category='A Category', objective='An Objective')
         collection_services.save_new_collection(self.owner_id, collection)
 
         # Check that collection is published correctly.
@@ -223,6 +279,96 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
         self.assertFalse(json_response['can_unpublish'])
         self.assertEqual(self.COLLECTION_ID, json_response['collection_id'])
         self.assertFalse(json_response['is_private'])
+        self.logout()
+
+    def test_can_not_publish_collection_with_invalid_payload_version(self):
+        self.set_collection_editors([self.OWNER_USERNAME])
+
+        # Login as owner and try to publish a collection with a public
+        # exploration.
+        self.login(self.OWNER_EMAIL)
+        collection_id = collection_services.get_new_collection_id()
+        exploration_id = exp_services.get_new_exploration_id()
+        self.save_new_valid_exploration(exploration_id, self.owner_id)
+        self.save_new_valid_collection(
+            collection_id, self.owner_id, exploration_id=exploration_id)
+        rights_manager.publish_exploration(self.owner, exploration_id)
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX, self.COLLECTION_ID))
+        csrf_token = self.get_csrf_token_from_response(response)
+
+        # Raises error as version is None.
+        response_dict = self.put_json(
+            '/collection_editor_handler/publish/%s' % collection_id,
+            {'version': None}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            response_dict['error'],
+            'Invalid POST request: a version must be specified.')
+
+        # Raises error as version from payload does not match the collection
+        # version.
+        response_dict = self.put_json(
+            '/collection_editor_handler/publish/%s' % collection_id,
+            {'version': 2}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            response_dict['error'],
+            'Trying to update version 1 of collection from version 2, '
+            'which is too old. Please reload the page and try again.')
+
+        self.logout()
+
+    def test_can_not_unpublish_collection_with_invalid_payload_version(self):
+        self.set_collection_editors([self.OWNER_USERNAME])
+
+        # Login as owner and publish a collection with a public exploration.
+        self.login(self.OWNER_EMAIL)
+        collection_id = collection_services.get_new_collection_id()
+        exploration_id = exp_services.get_new_exploration_id()
+        self.save_new_valid_exploration(exploration_id, self.owner_id)
+        self.save_new_valid_collection(
+            collection_id, self.owner_id, exploration_id=exploration_id)
+        rights_manager.publish_exploration(self.owner, exploration_id)
+        collection = collection_services.get_collection_by_id(collection_id)
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX, self.COLLECTION_ID))
+        csrf_token = self.get_csrf_token_from_response(response)
+        response_dict = self.put_json(
+            '/collection_editor_handler/publish/%s' % collection_id,
+            {'version': collection.version},
+            csrf_token=csrf_token)
+        self.assertFalse(response_dict['is_private'])
+        self.logout()
+
+        # Login as admin and try to unpublish the collection.
+        self.login(self.ADMIN_EMAIL)
+        response = self.get_html_response(
+            '%s/%s' % (feconf.COLLECTION_URL_PREFIX, self.COLLECTION_ID))
+        csrf_token = self.get_csrf_token_from_response(response)
+
+        # Raises error as version is None.
+        response_dict = self.put_json(
+            '/collection_editor_handler/unpublish/%s' % collection_id,
+            {'version': None}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            response_dict['error'],
+            'Invalid POST request: a version must be specified.')
+
+        # Raises error as version from payload does not match the collection
+        # version.
+        response_dict = self.put_json(
+            '/collection_editor_handler/unpublish/%s' % collection_id,
+            {'version': 2}, csrf_token=csrf_token, expected_status_int=400)
+
+        self.assertEqual(
+            response_dict['error'],
+            'Trying to update version 1 of collection from version 2, '
+            'which is too old. Please reload the page and try again.')
+
         self.logout()
 
     def test_publish_unpublish_collection(self):
@@ -238,26 +384,25 @@ class CollectionEditorTest(BaseCollectionEditorControllerTest):
             collection_id, self.owner_id, exploration_id=exploration_id)
         rights_manager.publish_exploration(self.owner, exploration_id)
         collection = collection_services.get_collection_by_id(collection_id)
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_URL_PREFIX,
-                       self.COLLECTION_ID))
+        response = self.get_html_response(
+            '%s/%s' % (
+                feconf.COLLECTION_URL_PREFIX, self.COLLECTION_ID))
         csrf_token = self.get_csrf_token_from_response(response)
         response_dict = self.put_json(
             '/collection_editor_handler/publish/%s' % collection_id,
             {'version': collection.version},
-            csrf_token)
+            csrf_token=csrf_token)
         self.assertFalse(response_dict['is_private'])
         self.logout()
 
         # Login as admin and unpublish the collection.
         self.login(self.ADMIN_EMAIL)
-        response = self.testapp.get(
-            '%s/%s' % (feconf.COLLECTION_URL_PREFIX,
-                       self.COLLECTION_ID))
+        response = self.get_html_response(
+            '%s/%s' % (feconf.COLLECTION_URL_PREFIX, self.COLLECTION_ID))
         csrf_token = self.get_csrf_token_from_response(response)
         response_dict = self.put_json(
             '/collection_editor_handler/unpublish/%s' % collection_id,
             {'version': collection.version},
-            csrf_token)
+            csrf_token=csrf_token)
         self.assertTrue(response_dict['is_private'])
         self.logout()

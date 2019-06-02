@@ -16,25 +16,26 @@
 
 """Controllers for the editor view."""
 
-import StringIO
 import datetime
 import imghdr
 import logging
-import re
 
 from constants import constants
+from core.controllers import acl_decorators
 from core.controllers import base
-from core.domain import acl_decorators
 from core.domain import config_domain
 from core.domain import dependency_registry
 from core.domain import email_manager
 from core.domain import exp_domain
 from core.domain import exp_services
 from core.domain import fs_domain
+from core.domain import fs_services
 from core.domain import interaction_registry
 from core.domain import obj_services
 from core.domain import rights_manager
 from core.domain import search_services
+from core.domain import state_domain
+from core.domain import stats_domain
 from core.domain import stats_services
 from core.domain import user_services
 from core.domain import value_generators_domain
@@ -44,28 +45,10 @@ import feconf
 import utils
 
 import jinja2
-import mutagen
-from mutagen import mp3
 
 app_identity_services = models.Registry.import_app_identity_services()
 current_user_services = models.Registry.import_current_user_services()
 (user_models,) = models.Registry.import_models([models.NAMES.user])
-
-# The frontend template for a new state. It is sent to the frontend when the
-# exploration editor page is first loaded, so that new states can be
-# added in a way that is completely client-side.
-# IMPORTANT: Before adding this state to an existing exploration, the
-# state name and the destination of the default rule should first be
-# changed to the desired new state name.
-NEW_STATE_TEMPLATE = {
-    'classifier_model_id': None,
-    'content': {
-        'html': '',
-        'audio_translations': {},
-    },
-    'interaction': exp_domain.State.NULL_INTERACTION_DICT,
-    'param_changes': [],
-}
 
 DEFAULT_TWITTER_SHARE_MESSAGE_EDITOR = config_domain.ConfigProperty(
     'default_twitter_share_message_editor', {
@@ -100,49 +83,9 @@ def _require_valid_version(version_from_payload, exploration_version):
             % (exploration_version, version_from_payload))
 
 
-class EditorLogoutHandler(base.BaseHandler):
-    """Handles logout from editor page."""
-
-    @acl_decorators.open_access
-    def get(self):
-        """Checks if exploration is published and redirects accordingly."""
-
-        url_to_redirect_to = str(self.request.get('return_url'))
-        url_to_redirect_to_regex = (
-            r'%s/(?P<exploration_id>[\w-]+)$' % feconf.EDITOR_URL_PREFIX)
-        is_valid_path = re.match(url_to_redirect_to_regex, url_to_redirect_to)
-
-        if is_valid_path:
-            exploration_id = is_valid_path.group(1)
-            exploration_rights = rights_manager.get_exploration_rights(
-                exploration_id, strict=False)
-
-            if exploration_rights is None or exploration_rights.is_private():
-                url_to_redirect_to = feconf.LIBRARY_INDEX_URL
-        else:
-            url_to_redirect_to = feconf.LIBRARY_INDEX_URL
-
-        self.redirect(super(EditorLogoutHandler, self)._get_logout_url(
-            url_to_redirect_to))
-
-
 class EditorHandler(base.BaseHandler):
     """Base class for all handlers for the editor page."""
-
-    def _get_logout_url(self, redirect_url_on_logout):
-        """This overrides the method in base.BaseHandler.
-        Returns logout url which will be handled by
-        EditorLogoutHandler.
-
-        Args:
-            redirect_url_on_logout: str. URL to redirect to on logout.
-
-        Returns:
-            str. logout url.
-        """
-        logout_url = utils.set_url_query_parameter(
-            '/exploration_editor_logout', 'return_url', redirect_url_on_logout)
-        return logout_url
+    pass
 
 
 class ExplorationPage(EditorHandler):
@@ -159,9 +102,8 @@ class ExplorationPage(EditorHandler):
                 iframe_restriction=None)
             return
 
-        (exploration, exploration_rights) = (
-            exp_services.get_exploration_and_exploration_rights_by_id(
-                exploration_id))
+        exploration_rights = rights_manager.get_exploration_rights(
+            exploration_id)
 
         visualizations_html = visualization_registry.Registry.get_full_html()
 
@@ -197,94 +139,31 @@ class ExplorationPage(EditorHandler):
             'can_release_ownership': (
                 rights_manager.check_can_release_ownership(
                     self.user, exploration_rights)),
+            'can_voiceover': (
+                rights_manager.check_can_voiceover_activity(
+                    self.user, exploration_rights)),
             'can_unpublish': rights_manager.check_can_unpublish_activity(
                 self.user, exploration_rights),
             'dependencies_html': jinja2.utils.Markup(dependencies_html),
             'interaction_templates': jinja2.utils.Markup(
                 interaction_templates),
             'meta_description': feconf.CREATE_PAGE_DESCRIPTION,
-            'nav_mode': feconf.NAV_MODE_CREATE,
             'value_generators_js': jinja2.utils.Markup(
                 get_value_generators_js()),
-            'title': exploration.title,
             'visualizations_html': jinja2.utils.Markup(visualizations_html),
-            'ALLOWED_INTERACTION_CATEGORIES': (
-                feconf.ALLOWED_INTERACTION_CATEGORIES),
             'INVALID_PARAMETER_NAMES': feconf.INVALID_PARAMETER_NAMES,
-            'NEW_STATE_TEMPLATE': NEW_STATE_TEMPLATE,
             'SHOW_TRAINABLE_UNRESOLVED_ANSWERS': (
                 feconf.SHOW_TRAINABLE_UNRESOLVED_ANSWERS),
             'TAG_REGEX': feconf.TAG_REGEX,
         })
 
-        self.render_template(
-            'pages/exploration_editor/exploration_editor.html',
-            redirect_url_on_logout=(
-                '%s/%s' % (feconf.EDITOR_URL_PREFIX, exploration_id)))
+        self.render_template('dist/exploration_editor.html')
 
 
 class ExplorationHandler(EditorHandler):
     """Page with editor data for a single exploration."""
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
-
-    def _get_exploration_data(
-            self, exploration_id, apply_draft=False, version=None):
-        """Returns a description of the given exploration."""
-        try:
-            if apply_draft:
-                exploration = exp_services.get_exp_with_draft_applied(
-                    exploration_id, self.user_id)
-            else:
-                exploration = exp_services.get_exploration_by_id(
-                    exploration_id, version=version)
-        except:
-            raise self.PageNotFoundException
-
-        states = {}
-        for state_name in exploration.states:
-            state_dict = exploration.states[state_name].to_dict()
-            states[state_name] = state_dict
-        exp_user_data = user_models.ExplorationUserDataModel.get(
-            self.user_id, exploration_id)
-        draft_changes = (exp_user_data.draft_change_list if exp_user_data
-                         and exp_user_data.draft_change_list else None)
-        is_version_of_draft_valid = (
-            exp_services.is_version_of_draft_valid(
-                exploration_id, exp_user_data.draft_change_list_exp_version)
-            if exp_user_data and exp_user_data.draft_change_list_exp_version
-            else None)
-        draft_change_list_id = (exp_user_data.draft_change_list_id
-                                if exp_user_data else 0)
-        exploration_email_preferences = (
-            user_services.get_email_preferences_for_exploration(
-                self.user_id, exploration_id))
-        editor_dict = {
-            'auto_tts_enabled': exploration.auto_tts_enabled,
-            'category': exploration.category,
-            'correctness_feedback_enabled': (
-                exploration.correctness_feedback_enabled),
-            'draft_change_list_id': draft_change_list_id,
-            'exploration_id': exploration_id,
-            'init_state_name': exploration.init_state_name,
-            'language_code': exploration.language_code,
-            'objective': exploration.objective,
-            'param_changes': exploration.param_change_dicts,
-            'param_specs': exploration.param_specs_dict,
-            'rights': rights_manager.get_exploration_rights(
-                exploration_id).to_dict(),
-            'show_state_editor_tutorial_on_load': (
-                self.user_id and not self.has_seen_editor_tutorial),
-            'states': states,
-            'tags': exploration.tags,
-            'title': exploration.title,
-            'version': exploration.version,
-            'is_version_of_draft_valid': is_version_of_draft_valid,
-            'draft_changes': draft_changes,
-            'email_preferences': exploration_email_preferences.to_dict()
-        }
-
-        return editor_dict
 
     @acl_decorators.can_play_exploration
     def get(self, exploration_id):
@@ -294,9 +173,28 @@ class ExplorationHandler(EditorHandler):
         # are not used by that tab.
         version = self.request.get('v', default_value=None)
         apply_draft = self.request.get('apply_draft', default_value=False)
-        self.values.update(
-            self._get_exploration_data(
-                exploration_id, apply_draft=apply_draft, version=version))
+
+        user_settings = user_services.get_user_settings(self.user_id)
+        has_seen_editor_tutorial = False
+        has_seen_translation_tutorial = False
+        if user_settings is not None:
+            if user_settings.last_started_state_editor_tutorial:
+                has_seen_editor_tutorial = True
+            if user_settings.last_started_state_translation_tutorial:
+                has_seen_translation_tutorial = True
+
+        try:
+            exploration_data = exp_services.get_user_exploration_data(
+                self.user_id, exploration_id, apply_draft=apply_draft,
+                version=version)
+            exploration_data['show_state_editor_tutorial_on_load'] = (
+                self.user_id and not has_seen_editor_tutorial)
+            exploration_data['show_state_translation_tutorial_on_load'] = (
+                self.user_id and not has_seen_translation_tutorial)
+        except:
+            raise self.PageNotFoundException
+
+        self.values.update(exploration_data)
         self.render_json(self.values)
 
     @acl_decorators.can_edit_exploration
@@ -307,14 +205,21 @@ class ExplorationHandler(EditorHandler):
         _require_valid_version(version, exploration.version)
 
         commit_message = self.payload.get('commit_message')
-        change_list = self.payload.get('change_list')
+        change_list_dict = self.payload.get('change_list')
+        change_list = [
+            exp_domain.ExplorationChange(change) for change in change_list_dict]
         try:
             exp_services.update_exploration(
                 self.user_id, exploration_id, change_list, commit_message)
         except utils.ValidationError as e:
             raise self.InvalidInputException(e)
 
-        self.values.update(self._get_exploration_data(exploration_id))
+        try:
+            exploration_data = exp_services.get_user_exploration_data(
+                self.user_id, exploration_id)
+        except:
+            raise self.PageNotFoundException
+        self.values.update(exploration_data)
         self.render_json(self.values)
 
     @acl_decorators.can_delete_exploration
@@ -333,6 +238,7 @@ class ExplorationHandler(EditorHandler):
         log_info_string = '(%s) %s deleted exploration %s' % (
             self.role, self.user_id, exploration_id)
         logging.info(log_info_string)
+        self.render_json(self.values)
 
 
 class ExplorationRightsHandler(EditorHandler):
@@ -500,104 +406,12 @@ class UserExplorationEmailsHandler(EditorHandler):
         })
 
 
-class UntrainedAnswersHandler(EditorHandler):
-    """Returns answers that learners have submitted, but that Oppia hasn't been
-    explicitly trained to respond to by an exploration author.
-    """
-    NUMBER_OF_TOP_ANSWERS_PER_RULE = 50
-
-    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
-
-    @acl_decorators.can_play_exploration
-    def get(self, exploration_id, escaped_state_name):
-        """Handles GET requests."""
-        try:
-            exploration = exp_services.get_exploration_by_id(exploration_id)
-        except:
-            raise self.PageNotFoundException
-
-        state_name = utils.unescape_encoded_uri_component(escaped_state_name)
-        if state_name not in exploration.states:
-            # If trying to access a non-existing state, there is no training
-            # data associated with it.
-            self.render_json({'unhandled_answers': []})
-            return
-
-        state = exploration.states[state_name]
-
-        # TODO(bhenning): Answers should be bound to a particular exploration
-        # version or interaction ID.
-
-        # TODO(bhenning): If the top 100 answers have already been classified,
-        # then this handler will always return an empty list.
-
-        # TODO(bhenning): This entire function will not work as expected until
-        # the answers storage backend stores answers in a non-lossy way.
-        # Currently, answers are stored as HTML strings and they are not able
-        # to be converted back to the original objects they started as, so the
-        # normalization calls in this function will not work correctly on those
-        # strings. Once this happens, this handler should also be tested.
-
-        # The total number of possible answers is 100 because it requests the
-        # top 50 answers matched to the default rule and the top 50 answers
-        # matched to the classifier individually.
-
-        # TODO(sll): Functionality for retrieving untrained answers was removed
-        # in PR 3489 due to infeasibility of the calculation approach. It needs
-        # to be reinstated in the future so that the training interface can
-        # function.
-        submitted_answers = []
-
-        interaction = state.interaction
-        unhandled_answers = []
-        if feconf.SHOW_TRAINABLE_UNRESOLVED_ANSWERS and interaction.id:
-            interaction_instance = (
-                interaction_registry.Registry.get_interaction_by_id(
-                    interaction.id))
-
-            try:
-                # Normalize the answers.
-                for answer in submitted_answers:
-                    answer['answer'] = interaction_instance.normalize_answer(
-                        answer['answer'])
-
-                trained_answers = set()
-                for answer_group in interaction.answer_groups:
-                    for rule_spec in answer_group.rule_specs:
-                        if (rule_spec.rule_type ==
-                                exp_domain.RULE_TYPE_CLASSIFIER):
-                            trained_answers.update(
-                                interaction_instance.normalize_answer(trained)
-                                for trained
-                                in rule_spec.inputs['training_data'])
-
-                # Include all the answers which have been confirmed to be
-                # associated with the default outcome.
-                trained_answers.update(set(
-                    interaction_instance.normalize_answer(confirmed)
-                    for confirmed
-                    in interaction.confirmed_unclassified_answers))
-
-                unhandled_answers = [
-                    answer for answer in submitted_answers
-                    if answer['answer'] not in trained_answers
-                ]
-            except Exception as e:
-                logging.warning(
-                    'Error loading untrained answers for interaction %s: %s.' %
-                    (interaction.id, e))
-
-        self.render_json({
-            'unhandled_answers': unhandled_answers
-        })
-
-
-class ExplorationDownloadHandler(EditorHandler):
+class ExplorationFileDownloader(EditorHandler):
     """Downloads an exploration as a zip file, or dict of YAML strings
     representing states.
     """
 
-    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_DOWNLOADABLE
 
     @acl_decorators.can_download_exploration
     def get(self, exploration_id):
@@ -607,23 +421,26 @@ class ExplorationDownloadHandler(EditorHandler):
         except:
             raise self.PageNotFoundException
 
-        version = self.request.get('v', default_value=exploration.version)
+        version_str = self.request.get('v', default_value=exploration.version)
         output_format = self.request.get('output_format', default_value='zip')
-        width = int(self.request.get('width', default_value=80))
+
+        try:
+            version = int(version_str)
+        except ValueError:
+            version = exploration.version
 
         # If the title of the exploration has changed, we use the new title.
-        filename = 'oppia-%s-v%s' % (
+        filename = 'oppia-%s-v%s.zip' % (
             utils.to_ascii(exploration.title.replace(' ', '')), version)
 
         if output_format == feconf.OUTPUT_FORMAT_ZIP:
-            self.response.headers['Content-Type'] = 'text/plain'
-            self.response.headers['Content-Disposition'] = (
-                'attachment; filename=%s.zip' % str(filename))
-            self.response.write(
-                exp_services.export_to_zip_file(exploration_id, version))
+            self.render_downloadable_file(
+                exp_services.export_to_zip_file(
+                    exploration_id, version=version),
+                filename, 'text/plain')
         elif output_format == feconf.OUTPUT_FORMAT_JSON:
             self.render_json(exp_services.export_states_to_yaml(
-                exploration_id, version=version, width=width))
+                exploration_id, version=version))
         else:
             raise self.InvalidInputException(
                 'Unrecognized output format %s' % output_format)
@@ -646,7 +463,8 @@ class StateYamlHandler(EditorHandler):
             raise self.PageNotFoundException
 
         self.render_json({
-            'yaml': exp_services.convert_state_dict_to_yaml(state_dict, width),
+            'yaml': state_domain.State.convert_state_dict_to_yaml(
+                state_dict, width),
         })
 
 
@@ -770,8 +588,100 @@ class StateRulesStatsHandler(EditorHandler):
         })
 
 
+class FetchIssuesHandler(EditorHandler):
+    """Handler used for retrieving the list of unresolved issues in an
+    exploration. This removes the invalid issues and returns the remaining
+    unresolved ones.
+    """
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+
+    @acl_decorators.can_view_exploration_stats
+    def get(self, exp_id):
+        """Handles GET requests."""
+        exp_version = self.request.get('exp_version')
+        exp_issues = stats_services.get_exp_issues(exp_id, exp_version)
+        if exp_issues is None:
+            raise self.PageNotFoundException(
+                'Invalid exploration ID %s' % (exp_id))
+        unresolved_issues = []
+        for issue in exp_issues.unresolved_issues:
+            if issue.is_valid:
+                unresolved_issues.append(issue)
+        exp_issues.unresolved_issues = unresolved_issues
+        exp_issues_dict = exp_issues.to_dict()
+        self.render_json(exp_issues_dict['unresolved_issues'])
+
+
+class FetchPlaythroughHandler(EditorHandler):
+    """Handler used for retrieving a playthrough."""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+
+    @acl_decorators.can_view_exploration_stats
+    def get(self, unused_exploration_id, playthrough_id):
+        """Handles GET requests."""
+        playthrough = stats_services.get_playthrough_by_id(playthrough_id)
+        if playthrough is None:
+            raise self.PageNotFoundException(
+                'Invalid playthrough ID %s' % (playthrough_id))
+        self.render_json(playthrough.to_dict())
+
+
+class ResolveIssueHandler(EditorHandler):
+    """Handler used for resolving an issue. Currently, when an issue is
+    resolved, the issue is removed from the unresolved issues list in the
+    ExplorationIssuesModel instance, and all corresponding playthrough
+    instances are deleted.
+    """
+
+    @acl_decorators.can_view_exploration_stats
+    def post(self, exp_id):
+        """Handles POST requests."""
+        exp_issue_dict = self.payload.get('exp_issue_dict')
+        try:
+            unused_exp_issue = stats_domain.ExplorationIssue.from_backend_dict(
+                exp_issue_dict)
+        except utils.ValidationError as e:
+            raise self.PageNotFoundException(e)
+
+        exp_version = self.payload.get('exp_version')
+
+        exp_issues = stats_services.get_exp_issues(exp_id, exp_version)
+        if exp_issues is None:
+            raise self.PageNotFoundException(
+                'Invalid exploration ID %s' % (exp_id))
+
+        # Check that the passed in issue actually exists in the exploration
+        # issues instance.
+        issue_to_remove = None
+        for issue in exp_issues.unresolved_issues:
+            if issue.to_dict() == exp_issue_dict:
+                issue_to_remove = issue
+                break
+
+        if not issue_to_remove:
+            raise self.PageNotFoundException(
+                'Exploration issue does not exist in the list of issues for '
+                'the exploration with ID %s' % exp_id)
+
+        # Remove the issue from the unresolved issues list.
+        exp_issues.unresolved_issues.remove(issue_to_remove)
+
+        # Update the exploration issues instance and delete the playthrough
+        # instances.
+        stats_services.delete_playthroughs_multi(
+            issue_to_remove.playthrough_ids)
+        stats_services.save_exp_issues_model_transactional(exp_issues)
+
+        self.render_json({})
+
+
 class ImageUploadHandler(EditorHandler):
     """Handles image uploads."""
+
+    # The string to prefix to the filename (before tacking the whole thing on
+    # to the end of 'assets/').
+    _FILENAME_PREFIX = 'image'
 
     @acl_decorators.can_edit_exploration
     def post(self, exploration_id):
@@ -793,6 +703,8 @@ class ImageUploadHandler(EditorHandler):
         # Verify that the file type matches the supplied extension.
         if not filename:
             raise self.InvalidInputException('No filename supplied')
+        if filename.rfind('.') == 0:
+            raise self.InvalidInputException('Invalid filename')
         if '/' in filename or '..' in filename:
             raise self.InvalidInputException(
                 'Filenames should not include slashes (/) or consecutive dot '
@@ -810,103 +722,18 @@ class ImageUploadHandler(EditorHandler):
                 'Expected a filename ending in .%s, received %s' %
                 (file_format, filename))
 
-        # Save the file.
-        fs = fs_domain.AbstractFileSystem(
-            fs_domain.ExplorationFileSystem(exploration_id))
-        if fs.isfile(filename):
+        file_system_class = fs_services.get_exploration_file_system_class()
+        fs = fs_domain.AbstractFileSystem(file_system_class(
+            'exploration/%s' % exploration_id))
+        filepath = '%s/%s' % (self._FILENAME_PREFIX, filename)
+
+        if fs.isfile(filepath):
             raise self.InvalidInputException(
                 'A file with the name %s already exists. Please choose a '
                 'different name.' % filename)
-        fs.commit(self.user_id, filename, raw)
 
-        self.render_json({'filepath': filename})
-
-
-class AudioUploadHandler(EditorHandler):
-    """Handles audio file uploads (to Google Cloud Storage in production, and
-    to the local datastore in dev).
-    """
-
-    # The string to prefix to the filename (before tacking the whole thing on
-    # to the end of 'assets/').
-    _FILENAME_PREFIX = 'audio'
-
-    @acl_decorators.can_edit_exploration
-    def post(self, exploration_id):
-        """Saves an audio file uploaded by a content creator."""
-
-        raw_audio_file = self.request.get('raw_audio_file')
-        filename = self.payload.get('filename')
-        allowed_formats = feconf.ACCEPTED_AUDIO_EXTENSIONS.keys()
-
-        if not raw_audio_file:
-            raise self.InvalidInputException('No audio supplied')
-        dot_index = filename.rfind('.')
-        extension = filename[dot_index + 1:].lower()
-
-        if dot_index == -1 or dot_index == 0:
-            raise self.InvalidInputException(
-                'No filename extension: it should have '
-                'one of the following extensions: %s' % allowed_formats)
-        if extension not in feconf.ACCEPTED_AUDIO_EXTENSIONS:
-            raise self.InvalidInputException(
-                'Invalid filename extension: it should have '
-                'one of the following extensions: %s' % allowed_formats)
-
-        tempbuffer = StringIO.StringIO()
-        tempbuffer.write(raw_audio_file)
-        tempbuffer.seek(0)
-        try:
-            # For every accepted extension, use the mutagen-specific
-            # constructor for that type. This will catch mismatched audio
-            # types e.g. uploading a flac file with an MP3 extension.
-            if extension == 'mp3':
-                audio = mp3.MP3(tempbuffer)
-            else:
-                audio = mutagen.File(tempbuffer)
-        except mutagen.MutagenError:
-            # The calls to mp3.MP3() versus mutagen.File() seem to behave
-            # differently upon not being able to interpret the audio.
-            # mp3.MP3() raises a MutagenError whereas mutagen.File()
-            # seems to return None. It's not clear if this is always
-            # the case. Occasionally, mutagen.File() also seems to
-            # raise a MutagenError.
-            raise self.InvalidInputException('Audio not recognized '
-                                             'as a %s file' % extension)
-        tempbuffer.close()
-
-        if audio is None:
-            raise self.InvalidInputException('Audio not recognized '
-                                             'as a %s file' % extension)
-        if audio.info.length > feconf.MAX_AUDIO_FILE_LENGTH_SEC:
-            raise self.InvalidInputException(
-                'Audio files must be under %s seconds in length. The uploaded '
-                'file is %.2f seconds long.' % (
-                    feconf.MAX_AUDIO_FILE_LENGTH_SEC, audio.info.length))
-        if len(set(audio.mime).intersection(
-                set(feconf.ACCEPTED_AUDIO_EXTENSIONS[extension]))) == 0:
-            raise self.InvalidInputException(
-                'Although the filename extension indicates the file '
-                'is a %s file, it was not recognized as one. '
-                'Found mime types: %s' % (extension, audio.mime))
-
-        mimetype = audio.mime[0]
-
-        # For a strange, unknown reason, the audio variable must be
-        # deleted before opening cloud storage. If not, cloud storage
-        # throws a very mysterious error that entails a mutagen
-        # object being recursively passed around in app engine.
-        del audio
-
-        # Audio files are stored to the datastore in the dev env, and to GCS
-        # in production.
-        file_system_class = (
-            fs_domain.ExplorationFileSystem if feconf.DEV_MODE
-            else fs_domain.GcsFileSystem)
-        fs = fs_domain.AbstractFileSystem(file_system_class(exploration_id))
-        fs.commit(
-            self.user_id, '%s/%s' % (self._FILENAME_PREFIX, filename),
-            raw_audio_file, mimetype=mimetype)
+        exp_services.save_original_and_compressed_versions_of_image(
+            self.user_id, filename, exploration_id, raw)
 
         self.render_json({'filename': filename})
 
@@ -918,6 +745,7 @@ class StartedTutorialEventHandler(EditorHandler):
     def post(self, unused_exploration_id):
         """Handles GET requests."""
         user_services.record_user_started_state_editor_tutorial(self.user_id)
+        self.render_json({})
 
 
 class EditorAutosaveHandler(ExplorationHandler):
@@ -929,7 +757,10 @@ class EditorAutosaveHandler(ExplorationHandler):
         # Raise an Exception if the draft change list fails non-strict
         # validation.
         try:
-            change_list = self.payload.get('change_list')
+            change_list_dict = self.payload.get('change_list')
+            change_list = [
+                exp_domain.ExplorationChange(change)
+                for change in change_list_dict]
             version = self.payload.get('version')
             exp_services.create_or_update_draft(
                 exploration_id, self.user_id, change_list, version,
@@ -953,3 +784,45 @@ class EditorAutosaveHandler(ExplorationHandler):
         """Handles POST request for discarding draft changes."""
         exp_services.discard_draft(exploration_id, self.user_id)
         self.render_json({})
+
+
+class StateAnswerStatisticsHandler(EditorHandler):
+    """Returns basic learner answer statistics for a state."""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+
+    @acl_decorators.can_view_exploration_stats
+    def get(self, exploration_id):
+        """Handles GET requests."""
+        try:
+            current_exploration = (
+                exp_services.get_exploration_by_id(exploration_id))
+        except:
+            raise self.PageNotFoundException
+
+        self.render_json({
+            'answers': stats_services.get_top_state_answer_stats_multi(
+                exploration_id, current_exploration.states)
+        })
+
+
+class TopUnresolvedAnswersHandler(EditorHandler):
+    """Returns a list of top N unresolved answers."""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+
+    @acl_decorators.can_edit_exploration
+    def get(self, exploration_id):
+        """Handles GET requests for unresolved answers."""
+        try:
+            state_name = self.request.get('state_name')
+        except Exception:
+            raise self.PageNotFoundException
+
+        unresolved_answers_with_frequency = (
+            stats_services.get_top_state_unresolved_answers(
+                exploration_id, state_name))
+
+        self.render_json({
+            'unresolved_answers': unresolved_answers_with_frequency
+        })

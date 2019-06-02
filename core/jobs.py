@@ -101,6 +101,11 @@ class BaseJobManager(object):
     """
     @classmethod
     def _is_abstract(cls):
+        """Checks if the job is created using the abstract base manager class.
+
+        Returns:
+            bool. Whether the job is created using abstract base manager class.
+        """
         return cls in ABSTRACT_BASE_CLASSES
 
     @classmethod
@@ -120,6 +125,12 @@ class BaseJobManager(object):
                 'manager class %s, which is not allowed.' % cls.__name__)
 
         def _create_new_job():
+            """Creates a new job by generating a unique id and inserting
+            it into the model.
+
+            Returns:
+                str. The unique job id.
+            """
             job_id = job_models.JobModel.get_new_id(cls.__name__)
             job_models.JobModel(id=job_id, job_type=cls.__name__).put()
             return job_id
@@ -214,7 +225,7 @@ class BaseJobManager(object):
         Returns:
             list(str). The compressed stringified output values.
         """
-        _MAX_OUTPUT_LEN_CHARS = 900000
+        _max_output_len_chars = 900000
 
         class _OrderedCounter(collections.Counter, collections.OrderedDict):
             """Counter that remembers the order elements are first encountered.
@@ -234,7 +245,7 @@ class BaseJobManager(object):
 
         # Truncate outputs to fit within given max length.
         remaining_len = (
-            _MAX_OUTPUT_LEN_CHARS if test_only_max_output_len_chars is None else
+            _max_output_len_chars if test_only_max_output_len_chars is None else
             test_only_max_output_len_chars)
         for idx, output_str in enumerate(output_str_list):
             remaining_len -= len(output_str)
@@ -484,34 +495,83 @@ class BaseJobManager(object):
 
     @classmethod
     def _pre_enqueue_hook(cls, job_id):
+        """A hook or a callback function triggered before enqueuing a job.
+
+        Args:
+            job_id: str. The unique ID of the job which is to be enqueued.
+        """
         pass
 
     @classmethod
     def _post_enqueue_hook(cls, job_id):
+        """A hook or a callback function triggered after enqueuing a job.
+
+        Args:
+            job_id: str. The unique ID of the job which was enqueued.
+        """
         pass
 
     @classmethod
     def _pre_start_hook(cls, job_id):
+        """A hook or a callback function triggered before marking a job
+        as started.
+
+        Args:
+            job_id: str. The unique ID of the job to be marked as started.
+        """
         pass
 
     @classmethod
     def _post_start_hook(cls, job_id):
+        """A hook or a callback function triggered after marking a job as
+        started.
+
+        Args:
+            job_id: str. The unique ID of the job marked as started.
+        """
         pass
 
     @classmethod
     def _post_completed_hook(cls, job_id):
+        """A hook or a callback function triggered after marking a job as
+        completed.
+
+        Args:
+            job_id: str. The unique ID of the job marked as completed.
+        """
         pass
 
     @classmethod
     def _post_failure_hook(cls, job_id):
+        """A hook or a callback function triggered after marking a job as
+        failed.
+
+        Args:
+            job_id: str. The unique ID of the job marked as failed.
+        """
         pass
 
     @classmethod
     def _pre_cancel_hook(cls, job_id, cancel_message):
+        """A hook or a callback function triggered before marking a job as
+        cancelled.
+
+        Args:
+            job_id: str. The unique ID of the job to be marked as cancelled.
+            cancel_message: str. The message to be displayed before
+                cancellation.
+        """
         pass
 
     @classmethod
     def _post_cancel_hook(cls, job_id, cancel_message):
+        """A hook or a callback function triggered after marking a job as
+        cancelled.
+
+        Args:
+            job_id: str. The unique ID of the job marked as cancelled.
+            cancel_message: str. The message to be displayed after cancellation.
+        """
         pass
 
 
@@ -587,6 +647,7 @@ class MapReduceJobPipeline(base_handler.PipelineBase):
     a run method which is called when this job is started by using start()
     method on the object created from this class.
     """
+
     def run(self, job_id, job_class_str, kwargs):
         """Returns a coroutine which runs the job pipeline and stores results.
 
@@ -619,6 +680,7 @@ class MapReduceJobPipeline(base_handler.PipelineBase):
 
 class StoreMapReduceResults(base_handler.PipelineBase):
     """MapreducePipeline class to store output results."""
+
     def run(self, job_id, job_class_str, output):
         """Extracts the results of a MR job and registers its completion.
 
@@ -654,6 +716,7 @@ class GoogleCloudStorageConsistentJsonOutputWriter(
     preferred as it's consistent. For more details please look here
     https://github.com/GoogleCloudPlatform/appengine-mapreduce/wiki/3.4-Readers-and-Writers#googlecloudstorageoutputwriter
     """
+
     def write(self, data):
         """Writes that data serialized in JSON format.
 
@@ -811,6 +874,14 @@ class BaseMapReduceJobManager(BaseJobManager):
 
     @classmethod
     def _pre_cancel_hook(cls, job_id, cancel_message):
+        """A hook or a callback function triggered before marking a job as
+        cancelled.
+
+        Args:
+            job_id: str. The unique ID of the job to be marked as cancelled.
+            cancel_message: str. The message to be displayed before
+                cancellation.
+        """
         metadata = cls.get_metadata(job_id)
         root_pipeline_id = metadata[cls._OUTPUT_KEY_ROOT_PIPELINE_ID]
         pipeline.Pipeline.from_id(root_pipeline_id).abort(cancel_message)
@@ -938,10 +1009,14 @@ class MultipleDatastoreEntitiesInputReader(input_readers.InputReader):
         issue a warning if "input_reader" subdicationary is not present.
 
         Args:
-            mapper_spec: model.MapperSpec. The MapperSpec for this InputReader.
+            unused_mapper_spec: model.MapperSpec. The MapperSpec
+                for this InputReader.
 
         Raises:
             BadReaderParamsError: Required parameters are missing or invalid.
+
+        Returns:
+            bool. Whether mapper spec and all mapper patterns are valid.
         """
         return True  # TODO.
 
@@ -993,14 +1068,33 @@ class BaseMapReduceJobManagerForContinuousComputations(BaseMapReduceJobManager):
 
     @classmethod
     def _post_completed_hook(cls, job_id):
+        """A hook or a callback function triggered after marking a job as
+        completed.
+
+        Args:
+            job_id: str. The unique ID of the job marked as completed.
+        """
         cls._get_continuous_computation_class().on_batch_job_completion()
 
     @classmethod
     def _post_cancel_hook(cls, job_id, cancel_message):
+        """A hook or a callback function triggered after marking a job as
+        cancelled.
+
+        Args:
+            job_id: str. The unique ID of the job marked as cancelled.
+            cancel_message: str. The message to be displayed after cancellation.
+        """
         cls._get_continuous_computation_class().on_batch_job_canceled()
 
     @classmethod
     def _post_failure_hook(cls, job_id):
+        """A hook or a callback function triggered after marking a job as
+        failed.
+
+        Args:
+            job_id: str. The unique ID of the job marked as failed.
+        """
         cls._get_continuous_computation_class().on_batch_job_failure()
 
 
@@ -1095,6 +1189,9 @@ class BaseRealtimeDatastoreClassForContinuousComputations(
 
         Raises:
             Exception: The current instance has an invalid realtime layer id.
+
+        Returns:
+            realtime_layer. The realtime layer entity.
         """
         if (self.realtime_layer is None or
                 str(self.realtime_layer) != self.id[0]):
@@ -1227,6 +1324,13 @@ class BaseContinuousComputationManager(object):
             str. The active realtime layer index of this class.
         """
         def _get_active_realtime_index_transactional():
+            """Finds the Continous Computation Model corresponding to this
+            class type or inserts it in the database if not found and extracts
+            the active realtime layer index.
+
+            Returns:
+                str. The active realtime layer index of this class.
+            """
             cc_model = job_models.ContinuousComputationModel.get(
                 cls.__name__, strict=False)
             if cc_model is None:
@@ -1279,6 +1383,9 @@ class BaseContinuousComputationManager(object):
         computation.
         """
         def _switch_active_realtime_class_transactional():
+            """Retrieves currently-active realtime layer index, switches it
+            and inserts the new model to the database.
+            """
             cc_model = job_models.ContinuousComputationModel.get(
                 cls.__name__)
             cc_model.active_realtime_layer_index = (
@@ -1436,8 +1543,8 @@ class BaseContinuousComputationManager(object):
                 a student starts an exploration, event of type `start` is
                 triggered. If he/she completes an exploration, event of type
                 `complete` is triggered.
-            *args: Forwarded to _handle_event() method.
-            *kwargs: Forwarded to _handle_event() method.
+            *args: list(*). Forwarded to _handle_event() method.
+            **kwargs: *. Forwarded to _handle_event() method.
         """
         realtime_layers = [0, 1]
         for layer in realtime_layers:
@@ -1459,6 +1566,10 @@ class BaseContinuousComputationManager(object):
         cls._clear_inactive_realtime_layer(datetime.datetime.utcnow())
 
         def _update_last_finished_time_transactional():
+            """Updates the time at which a batch job for this computation was
+            last completed or failed, in milliseconds since the epoch, setting
+            it to the current time.
+            """
             cc_model = job_models.ContinuousComputationModel.get(cls.__name__)
             cc_model.last_finished_msec = utils.get_current_time_in_millisecs()
             cc_model.put()

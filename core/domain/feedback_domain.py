@@ -22,8 +22,9 @@ class FeedbackThread(object):
     """Domain object for a feedback thread.
 
     Attributes:
-        full_thread_id: str. The feedback thread ID.
-        exploration_id: str. The associated exploration's ID.
+        thread_id: str. The feedback thread ID.
+        entity_type: str. The type of entity the feedback thread is linked to.
+        entity_id: str. The id of the entity.
         state_name: str. The name of the state associated with
             the feedback thread.
         original_author_id: str. The ID of the original author.
@@ -39,13 +40,15 @@ class FeedbackThread(object):
             was last updated.
     """
 
-    def __init__(self, full_thread_id, exploration_id, state_name,
-                 original_author_id, status, subject, summary, has_suggestion,
-                 message_count, created_on, last_updated):
+    def __init__(
+            self, thread_id, entity_type, entity_id, state_name,
+            original_author_id, status, subject, summary, has_suggestion,
+            message_count, created_on, last_updated):
         """Initializes a FeedbackThread object."""
 
-        self.id = full_thread_id
-        self.exploration_id = exploration_id
+        self.id = thread_id
+        self.entity_type = entity_type
+        self.entity_id = entity_id
         self.state_name = state_name
         self.original_author_id = original_author_id
         self.status = status
@@ -56,14 +59,6 @@ class FeedbackThread(object):
 
         self.created_on = created_on
         self.last_updated = last_updated
-
-    def get_thread_id(self):
-        """Returns the ID of the FeedbackThread instance.
-
-        Returns:
-            str. The ID of this FeedbackThread instance.
-        """
-        return FeedbackThread.get_thread_id_from_full_thread_id(self.id)
 
     def to_dict(self):
         """Returns a dict representation of this FeedbackThread object.
@@ -79,35 +74,9 @@ class FeedbackThread(object):
             'status': self.status,
             'subject': self.subject,
             'summary': self.summary,
-            'thread_id': self.get_thread_id(),
+            'thread_id': self.id,
             'message_count': self.message_count
         }
-
-    @staticmethod
-    def get_exp_id_from_full_thread_id(full_thread_id):
-        """Returns the ID of the exploration that the thread belongs to.
-
-        Args:
-            full_thread_id: str. The "full ID" of the feedback thread. (This is
-                a concatenation of the exploration ID and the thread ID.)
-
-        Returns:
-            str. The ID of the associated exploration.
-        """
-        return full_thread_id.split('.')[0]
-
-    @staticmethod
-    def get_thread_id_from_full_thread_id(full_thread_id):
-        """Returns the ID of the feedback thread.
-
-        Args:
-            full_thread_id: str. The "full ID" of the feedback thread. (This is
-                a concatenation of the exploration ID and the thread ID.)
-
-        Returns:
-            str. The ID of the feedback thread.
-        """
-        return full_thread_id.split('.')[1]
 
     def get_full_message_id(self, message_id):
         """Returns the full id of the message.
@@ -146,7 +115,7 @@ class FeedbackMessage(object):
 
     Attributes:
         full_message_id: str. The ID of the feedback message.
-        full_thread_id: str. The ID of the feedback thread containing this
+        thread_id: str. The ID of the feedback thread containing this
             message.
         message_id: str. The ID of the feedback thread message.
         author_id: str. The ID of the message's author.
@@ -160,11 +129,12 @@ class FeedbackMessage(object):
         received_via_email: bool. Whether the feedback was received via email.
     """
 
-    def __init__(self, full_message_id, full_thread_id, message_id, author_id,
-                 updated_status, updated_subject, text, created_on,
-                 last_updated, received_via_email):
+    def __init__(
+            self, full_message_id, thread_id, message_id, author_id,
+            updated_status, updated_subject, text, created_on,
+            last_updated, received_via_email):
         self.id = full_message_id
-        self.full_thread_id = full_thread_id
+        self.thread_id = thread_id
         self.message_id = message_id
         self.author_id = author_id
         self.updated_status = updated_status
@@ -175,12 +145,21 @@ class FeedbackMessage(object):
         self.received_via_email = received_via_email
 
     @property
-    def exploration_id(self):
-        """Returns the exploration ID corresponding to this FeedbackMessage
+    def entity_id(self):
+        """Returns the entity ID corresponding to this FeedbackMessage instance.
+
+        Returns:
+            str. The entity_id.
+        """
+        return self.id.split('.')[1]
+
+    @property
+    def entity_type(self):
+        """Returns the entity type corresponding to this FeedbackMessage
         instance.
 
         Returns:
-            str. The exploration_id.
+            str. The entity_type.
         """
         return self.id.split('.')[0]
 
@@ -195,7 +174,8 @@ class FeedbackMessage(object):
                 user_services.get_username(self.author_id)
                 if self.author_id else None),
             'created_on': utils.get_time_in_millisecs(self.created_on),
-            'exploration_id': self.exploration_id,
+            'entity_type': self.entity_type,
+            'entity_id': self.entity_id,
             'message_id': self.message_id,
             'text': self.text,
             'updated_status': self.updated_status,
@@ -205,21 +185,23 @@ class FeedbackMessage(object):
 
 
 class FeedbackAnalytics(object):
-    """Domain object representing feedback analytics for a specific
-    exploration.
+    """Domain object representing feedback analytics for a specific entity.
 
     Attributes:
-        exploration_id: str. The ID of the associated exploration.
+        entity_type: str. The type of entity the feedback thread is linked to.
+        entity_id: str. The id of the entity.
         num_open_threads: int. The number of open threads associated with the
-            exploration.
+            entity.
         num_total_threads: int. The total number of threads associated with the
-            exploration (regardless of status).
+            entity (regardless of status).
     """
 
-    def __init__(self, exploration_id, num_open_threads, num_total_threads):
+    def __init__(
+            self, entity_type, entity_id, num_open_threads, num_total_threads):
         """Initializes a FeedbackAnalytics object."""
 
-        self.id = exploration_id
+        self.id = entity_id
+        self.entity_type = entity_type
         self.num_open_threads = num_open_threads
         self.num_total_threads = num_total_threads
 
@@ -236,67 +218,20 @@ class FeedbackAnalytics(object):
         }
 
 
-class Suggestion(object):
-    """Domain object for a suggestion.
-
-    Attributes:
-        full_thread_id: str. The ID of the suggestion thread.
-        author_id: str. The ID of the message's author.
-        exploration_id: str. The ID of the associated exploration.
-        exploration_version: int. The version of the exploration associated
-            with the suggestion.
-        state_name: str. The name of the state associated with the suggestion.
-        description: str. A description of the suggestion.
-        suggestion_html: str. The state's suggested content.
-        """
-
-    def __init__(self, full_thread_id, author_id, exploration_id,
-                 exploration_version, state_name, description, suggestion_html):
-        """Initializes a Suggestion object."""
-        self.id = full_thread_id
-        self.author_id = author_id
-        self.exploration_id = exploration_id
-        self.exploration_version = exploration_version
-        self.state_name = state_name
-        self.description = description
-        self.suggestion_html = suggestion_html
-
-    def get_author_name(self):
-        """Returns the author's username.
-
-        Returns:
-            str. The username of the author of the suggestion.
-        """
-        return user_services.get_username(self.author_id)
-
-    def to_dict(self):
-        """Returns a dict representation of the Suggestion object.
-
-        Returns:
-            dict. Dict representation of the Suggestion object.
-        """
-        return {
-            'author_name': self.get_author_name(),
-            'exploration_id': self.exploration_id,
-            'exploration_version': self.exploration_version,
-            'state_name': self.state_name,
-            'description': self.description,
-            'suggestion_html': self.suggestion_html
-        }
-
-
 class FeedbackMessageReference(object):
     """Domain object for feedback message references.
 
     Attributes:
-        exploration_id: str. The ID of the exploration.
+        entity_type: str. The type of entity the feedback thread is linked to.
+        entity_id: str. The id of the entity.
         thread_id: str. The ID of the feedback thread.
         message_id: str. The ID of the feedback thread message.
     """
 
-    def __init__(self, exploration_id, thread_id, message_id):
+    def __init__(self, entity_type, entity_id, thread_id, message_id):
         """Initializes FeedbackMessageReference object."""
-        self.exploration_id = exploration_id
+        self.entity_type = entity_type
+        self.entity_id = entity_id
         self.thread_id = thread_id
         self.message_id = message_id
 
@@ -307,7 +242,8 @@ class FeedbackMessageReference(object):
             dict. Dict representation of the FeedbackMessageReference object.
         """
         return {
-            'exploration_id': self.exploration_id,
+            'entity_type': self.entity_type,
+            'entity_id': self.entity_id,
             'thread_id': self.thread_id,
             'message_id': self.message_id
         }

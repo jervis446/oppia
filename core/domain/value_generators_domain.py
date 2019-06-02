@@ -71,8 +71,8 @@ class BaseValueGenerator(object):
         # variables they have access to are generatorId, initArgs,
         # customizationArgs and objType.
         return utils.get_file_contents(os.path.join(
-            os.getcwd(), feconf.VALUE_GENERATORS_DIR, 'templates',
-            '%s.js' % cls.__name__))
+            os.getcwd(), feconf.VALUE_GENERATORS_DIR_FOR_JS, 'templates',
+            '%sDirective.js' % cls.__name__))
 
     def generate_value(self, *args, **kwargs):
         """Generates a new value, using the given customization args.
@@ -110,13 +110,9 @@ class Registry(object):
             if name.endswith('_test'):
                 continue
             module = loader.find_module(name).load_module(name)
-            for _, clazz in inspect.getmembers(module, inspect.isclass):
+            for _, clazz in inspect.getmembers(
+                    module, predicate=inspect.isclass):
                 if issubclass(clazz, BaseValueGenerator):
-                    if clazz.__name__ in cls.value_generators_dict:
-                        raise Exception(
-                            'Duplicate value generator name %s'
-                            % clazz.__name__)
-
                     cls.value_generators_dict[clazz.__name__] = clazz
 
     @classmethod

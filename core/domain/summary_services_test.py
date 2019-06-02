@@ -14,13 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Unit tests for core.domain.summary_services."""
+
 from constants import constants
 from core.domain import activity_domain
 from core.domain import activity_services
 from core.domain import collection_domain
 from core.domain import collection_services
+from core.domain import exp_domain
 from core.domain import exp_services
 from core.domain import exp_services_test
+from core.domain import html_validation_service
 from core.domain import rating_services
 from core.domain import rights_manager
 from core.domain import summary_services
@@ -28,6 +32,11 @@ from core.domain import user_services
 from core.tests import test_utils
 import feconf
 import utils
+
+
+def mock_get_filename_with_dimensions(filename, unused_exp_id):
+    return html_validation_service.regenerate_image_filename_using_dimensions(
+        filename, 490, 120)
 
 
 class ExplorationDisplayableSummariesTest(
@@ -89,27 +98,27 @@ class ExplorationDisplayableSummariesTest(
         self.save_new_valid_exploration(self.EXP_ID_1, self.albert_id)
 
         exp_services.update_exploration(
-            self.bob_id, self.EXP_ID_1, [{
+            self.bob_id, self.EXP_ID_1, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'Exploration 1 title'
-            }], 'Changed title.')
+            })], 'Changed title.')
 
         self.save_new_valid_exploration(self.EXP_ID_2, self.albert_id)
 
         exp_services.update_exploration(
-            self.albert_id, self.EXP_ID_1, [{
+            self.albert_id, self.EXP_ID_1, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'Exploration 1 Albert title'
-            }], 'Changed title to Albert1 title.')
+            })], 'Changed title to Albert1 title.')
 
         exp_services.update_exploration(
-            self.albert_id, self.EXP_ID_2, [{
+            self.albert_id, self.EXP_ID_2, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'Exploration 2 Albert title'
-            }], 'Changed title to Albert2 title.')
+            })], 'Changed title to Albert2 title.')
 
         exp_services.revert_exploration(self.bob_id, self.EXP_ID_1, 3, 2)
 
@@ -133,18 +142,18 @@ class ExplorationDisplayableSummariesTest(
 
         self.save_new_valid_exploration(self.EXP_ID_4, self.user_c_id)
         exp_services.update_exploration(
-            self.user_d_id, self.EXP_ID_4, [{
+            self.user_d_id, self.EXP_ID_4, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'Exploration updated title'
-            }], 'Changed title once.')
+            })], 'Changed title once.')
 
         exp_services.update_exploration(
-            self.user_d_id, self.EXP_ID_4, [{
+            self.user_d_id, self.EXP_ID_4, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'Exploration updated title again'
-            }], 'Changed title twice.')
+            })], 'Changed title twice.')
 
         self.save_new_valid_exploration(self.EXP_ID_5, self.bob_id)
 
@@ -197,8 +206,8 @@ class ExplorationDisplayableSummariesTest(
             'title': u'Exploration 2 Albert title',
         }
         self.assertIn('last_updated_msec', displayable_summaries[0])
-        self.assertDictContainsSubset(expected_summary,
-                                      displayable_summaries[0])
+        self.assertDictContainsSubset(
+            expected_summary, displayable_summaries[0])
 
     def test_get_public_and_filtered_private_summary_dicts_for_creator(self):
         # If a new exploration is created by another user (Bob) and not public,
@@ -249,13 +258,19 @@ class LibraryGroupsTest(exp_services_test.ExplorationServicesUnitTests):
 
         super(LibraryGroupsTest, self).setUp()
         self.login(self.ADMIN_EMAIL, is_super_admin=True)
-        response = self.testapp.get('/admin')
+        response = self.get_html_response('/admin')
         csrf_token = self.get_csrf_token_from_response(response)
-        self.post_json('/adminhandler', {
-            'action': 'reload_exploration',
-            'exploration_id': '2'
-        }, csrf_token)
-        self.logout()
+
+        with self.swap(
+            html_validation_service, 'get_filename_with_dimensions',
+            mock_get_filename_with_dimensions):
+
+            self.post_json(
+                '/adminhandler', {
+                    'action': 'reload_exploration',
+                    'exploration_id': '2'
+                }, csrf_token=csrf_token)
+            self.logout()
 
     def test_get_library_groups(self):
         """The exploration with id '2' is an exploration in the Mathematics
@@ -273,7 +288,7 @@ class LibraryGroupsTest(exp_services_test.ExplorationServicesUnitTests):
             'ratings': feconf.get_empty_ratings(),
             'status': u'public',
             'tags': [],
-            'title':  u'The Lazy Magician',
+            'title': u'The Lazy Magician',
             'thumbnail_bg_color': '#d0982a',
             'thumbnail_icon_url': '/subjects/Algorithms.svg',
         }
@@ -726,8 +741,8 @@ class RecentlyPublishedExplorationDisplayableSummariesTest(
         - (7) Admin user is set up.
         """
 
-        super(RecentlyPublishedExplorationDisplayableSummariesTest,
-              self).setUp()
+        super(
+            RecentlyPublishedExplorationDisplayableSummariesTest, self).setUp()
 
         self.admin_id = self.get_user_id_from_email(self.ADMIN_EMAIL)
         self.albert_id = self.get_user_id_from_email(self.ALBERT_EMAIL)
@@ -810,11 +825,11 @@ class RecentlyPublishedExplorationDisplayableSummariesTest(
         # Test that editing an exploration does not change its
         # 'recently-published' status.
         exp_services.update_exploration(
-            self.albert_id, self.EXP_ID_1, [{
+            self.albert_id, self.EXP_ID_1, [exp_domain.ExplorationChange({
                 'cmd': 'edit_exploration_property',
                 'property_name': 'title',
                 'new_value': 'New title'
-            }], 'Changed title.')
+            })], 'Changed title.')
 
         recently_published_exploration_summaries = (
             summary_services.get_recently_published_exp_summary_dicts(
@@ -907,25 +922,30 @@ class CollectionNodeMetadataDictsTest(
         self.albert = user_services.UserActionsInfo(self.albert_id)
         self.bob = user_services.UserActionsInfo(self.bob_id)
 
-        self.save_new_valid_exploration(self.EXP_ID1, self.albert_id,
-                                        title='Exploration 1 Albert title',
-                                        objective='An objective 1')
+        self.save_new_valid_exploration(
+            self.EXP_ID1, self.albert_id,
+            title='Exploration 1 Albert title',
+            objective='An objective 1')
 
-        self.save_new_valid_exploration(self.EXP_ID2, self.albert_id,
-                                        title='Exploration 2 Albert title',
-                                        objective='An objective 2')
+        self.save_new_valid_exploration(
+            self.EXP_ID2, self.albert_id,
+            title='Exploration 2 Albert title',
+            objective='An objective 2')
 
-        self.save_new_valid_exploration(self.EXP_ID3, self.albert_id,
-                                        title='Exploration 3 Albert title',
-                                        objective='An objective 3')
+        self.save_new_valid_exploration(
+            self.EXP_ID3, self.albert_id,
+            title='Exploration 3 Albert title',
+            objective='An objective 3')
 
-        self.save_new_valid_exploration(self.EXP_ID4, self.bob_id,
-                                        title='Exploration 4 Bob title',
-                                        objective='An objective 4')
+        self.save_new_valid_exploration(
+            self.EXP_ID4, self.bob_id,
+            title='Exploration 4 Bob title',
+            objective='An objective 4')
 
-        self.save_new_valid_exploration(self.EXP_ID5, self.albert_id,
-                                        title='Exploration 5 Albert title',
-                                        objective='An objective 5')
+        self.save_new_valid_exploration(
+            self.EXP_ID5, self.albert_id,
+            title='Exploration 5 Albert title',
+            objective='An objective 5')
 
         rights_manager.publish_exploration(self.albert, self.EXP_ID1)
         rights_manager.publish_exploration(self.albert, self.EXP_ID2)

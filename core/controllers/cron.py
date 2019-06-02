@@ -17,18 +17,21 @@
 import logging
 
 from core import jobs
+from core.controllers import acl_decorators
 from core.controllers import base
-from core.domain import acl_decorators
 from core.domain import activity_jobs_one_off
 from core.domain import email_manager
 from core.domain import recommendations_jobs_one_off
+from core.domain import suggestion_services
 from core.domain import user_jobs_one_off
 from core.platform import models
+import feconf
 import utils
 
 from pipeline import pipeline
 
-(job_models,) = models.Registry.import_models([models.NAMES.job])
+(job_models, suggestion_models) = models.Registry.import_models([
+    models.NAMES.job, models.NAMES.suggestion])
 
 # The default retention time is 2 days.
 MAX_MAPREDUCE_METADATA_RETENTION_MSECS = 2 * 24 * 60 * 60 * 1000
@@ -185,3 +188,40 @@ class CronMapreduceCleanupHandler(base.BaseHandler):
                     jobs.MAPPER_PARAM_MAX_START_TIME_MSEC: max_start_time_msec
                 })
             logging.warning('Deletion jobs for auxiliary entities kicked off.')
+
+
+class CronAcceptStaleSuggestionsHandler(base.BaseHandler):
+    """Handler to accept suggestions that have no activity on them for
+    THRESHOLD_TIME_BEFORE_ACCEPT time.
+    """
+
+    @acl_decorators.can_perform_cron_tasks
+    def get(self):
+        """Handles get requests."""
+        if feconf.ENABLE_AUTO_ACCEPT_OF_SUGGESTIONS:
+            suggestions = suggestion_services.get_all_stale_suggestions()
+            for suggestion in suggestions:
+                suggestion_services.accept_suggestion(
+                    suggestion, feconf.SUGGESTION_BOT_USER_ID,
+                    suggestion_models.DEFAULT_SUGGESTION_ACCEPT_MESSAGE, None)
+
+
+class CronMailReviewersInRotationHandler(base.BaseHandler):
+    """Handler to send emails notifying reviewers that there are suggestions
+    that need reviews.
+    """
+
+    @acl_decorators.can_perform_cron_tasks
+    def get(self):
+        """Handles get requests."""
+        if feconf.SEND_SUGGESTION_REVIEW_RELATED_EMAILS:
+            score_categories = suggestion_models.get_all_score_categories()
+            for score_category in score_categories:
+                suggestions = suggestion_services.query_suggestions(
+                    [('score_category', score_category),
+                     ('status', suggestion_models.STATUS_ACCEPTED)])
+                if len(suggestions) > 0:
+                    reviewer_id = suggestion_services.get_next_user_in_rotation(
+                        score_category)
+                    email_manager.send_mail_to_notify_users_to_review(
+                        reviewer_id, score_category)

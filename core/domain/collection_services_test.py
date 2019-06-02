@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Unit tests for core.domain.collection_services."""
+
 import datetime
 
 from core.domain import collection_domain
@@ -37,6 +39,7 @@ transaction_services = models.Registry.import_transaction_services()
 
 # pylint: disable=protected-access
 def _count_at_least_editable_collection_summaries(user_id):
+    """Returns the count of collection summaries that are atleast editable."""
     return len(collection_services._get_collection_summary_dicts_from_models(
         collection_models.CollectionSummaryModel.get_at_least_editable(
             user_id=user_id)))
@@ -77,7 +80,7 @@ class CollectionQueriesUnitTests(CollectionServicesUnitTests):
         self.assertEqual(
             collection_services.get_collection_titles_and_categories([]), {})
 
-        self.save_new_default_collection('A', self.owner_id, 'TitleA')
+        self.save_new_default_collection('A', self.owner_id, title='TitleA')
         self.assertEqual(
             collection_services.get_collection_titles_and_categories(['A']), {
                 'A': {
@@ -86,7 +89,7 @@ class CollectionQueriesUnitTests(CollectionServicesUnitTests):
                 }
             })
 
-        self.save_new_default_collection('B', self.owner_id, 'TitleB')
+        self.save_new_default_collection('B', self.owner_id, title='TitleB')
         self.assertEqual(
             collection_services.get_collection_titles_and_categories(
                 ['A']), {
@@ -130,9 +133,15 @@ class CollectionProgressUnitTests(CollectionServicesUnitTests):
     EXP_ID_2 = '2_exploration_id'
 
     def _get_progress_model(self, user_id, collection_id):
+        """Returns the CollectionProgressModel for the given user id and
+        collection id.
+        """
         return user_models.CollectionProgressModel.get(user_id, collection_id)
 
     def _record_completion(self, user_id, collection_id, exploration_id):
+        """Records the played exploration in the collection by the user
+        corresponding to the given user id.
+        """
         collection_services.record_played_exploration_in_collection_context(
             user_id, collection_id, exploration_id)
 
@@ -243,8 +252,9 @@ class CollectionProgressUnitTests(CollectionServicesUnitTests):
         completion_model = self._get_progress_model(
             self.owner_id, self.COL_ID_0)
         self.assertIsNotNone(completion_model)
-        self.assertEqual(completion_model.completed_explorations, [
-            self.EXP_ID_0])
+        self.assertEqual(
+            completion_model.completed_explorations, [
+                self.EXP_ID_0])
 
         # If the same exploration is completed again within the context of this
         # collection, it should not be duplicated.
@@ -252,8 +262,9 @@ class CollectionProgressUnitTests(CollectionServicesUnitTests):
             self.owner_id, self.COL_ID_0, self.EXP_ID_0)
         completion_model = self._get_progress_model(
             self.owner_id, self.COL_ID_0)
-        self.assertEqual(completion_model.completed_explorations, [
-            self.EXP_ID_0])
+        self.assertEqual(
+            completion_model.completed_explorations, [
+                self.EXP_ID_0])
 
         # If the same exploration and another are completed within the context
         # of a different collection, it shouldn't affect this one.
@@ -264,8 +275,9 @@ class CollectionProgressUnitTests(CollectionServicesUnitTests):
             self.owner_id, self.COL_ID_1, self.EXP_ID_1)
         completion_model = self._get_progress_model(
             self.owner_id, self.COL_ID_0)
-        self.assertEqual(completion_model.completed_explorations, [
-            self.EXP_ID_0])
+        self.assertEqual(
+            completion_model.completed_explorations, [
+                self.EXP_ID_0])
 
         # If two more explorations are completed, they are recorded in the
         # order they are completed.
@@ -275,8 +287,9 @@ class CollectionProgressUnitTests(CollectionServicesUnitTests):
             self.owner_id, self.COL_ID_0, self.EXP_ID_1)
         completion_model = self._get_progress_model(
             self.owner_id, self.COL_ID_0)
-        self.assertEqual(completion_model.completed_explorations, [
-            self.EXP_ID_0, self.EXP_ID_2, self.EXP_ID_1])
+        self.assertEqual(
+            completion_model.completed_explorations, [
+                self.EXP_ID_0, self.EXP_ID_2, self.EXP_ID_1])
 
 
 class CollectionSummaryQueriesUnitTests(CollectionServicesUnitTests):
@@ -328,6 +341,7 @@ class CollectionSummaryQueriesUnitTests(CollectionServicesUnitTests):
 
 
     def _create_search_query(self, terms, categories):
+        """Returns the search query derived from terms and categories."""
         query = ' '.join(terms)
         if categories:
             query += ' category=(' + ' OR '.join([
@@ -416,7 +430,7 @@ class CollectionSummaryQueriesUnitTests(CollectionServicesUnitTests):
             # Page 1: 2 initial collections.
             (col_ids, search_cursor) = (
                 collection_services.get_collection_ids_matching_query(
-                    '', None))
+                    ''))
             self.assertEqual(len(col_ids), 2)
             self.assertIsNotNone(search_cursor)
             found_col_ids += col_ids
@@ -424,7 +438,7 @@ class CollectionSummaryQueriesUnitTests(CollectionServicesUnitTests):
             # Page 2: 2 more collections.
             (col_ids, search_cursor) = (
                 collection_services.get_collection_ids_matching_query(
-                    '', search_cursor))
+                    '', cursor=search_cursor))
             self.assertEqual(len(col_ids), 2)
             self.assertIsNotNone(search_cursor)
             found_col_ids += col_ids
@@ -432,7 +446,7 @@ class CollectionSummaryQueriesUnitTests(CollectionServicesUnitTests):
             # Page 3: 1 final collection.
             (col_ids, search_cursor) = (
                 collection_services.get_collection_ids_matching_query(
-                    '', search_cursor))
+                    '', cursor=search_cursor))
             self.assertEqual(len(col_ids), 1)
             self.assertIsNone(search_cursor)
             found_col_ids += col_ids
@@ -506,16 +520,19 @@ class CollectionCreateAndDeleteUnitTests(CollectionServicesUnitTests):
             _count_at_least_editable_collection_summaries(self.owner_id), 0)
 
         # But the models still exist in the backend.
-        self.assertIn(self.COLLECTION_ID, [
-            collection.id
-            for collection in collection_models.CollectionModel.get_all(
-                include_deleted=True)])
+        self.assertIn(
+            self.COLLECTION_ID, [
+                collection.id
+                for collection in collection_models.CollectionModel.get_all(
+                    include_deleted=True)])
 
         # The collection summary is deleted, however.
-        self.assertNotIn(self.COLLECTION_ID, [
-            collection.id
-            for collection in collection_models.CollectionSummaryModel.get_all(
-                include_deleted=True)])
+        self.assertNotIn(
+            self.COLLECTION_ID, [
+                collection.id
+                for collection in
+                collection_models.CollectionSummaryModel.get_all(
+                    include_deleted=True)])
 
     def test_hard_deletion_of_collections(self):
         """Test that hard deletion of collections works correctly."""
@@ -534,10 +551,11 @@ class CollectionCreateAndDeleteUnitTests(CollectionServicesUnitTests):
             _count_at_least_editable_collection_summaries(self.owner_id), 0)
 
         # The collection model has been purged from the backend.
-        self.assertNotIn(self.COLLECTION_ID, [
-            collection.id
-            for collection in collection_models.CollectionModel.get_all(
-                include_deleted=True)])
+        self.assertNotIn(
+            self.COLLECTION_ID, [
+                collection.id
+                for collection in collection_models.CollectionModel.get_all(
+                    include_deleted=True)])
 
     def test_summaries_of_hard_deleted_collections(self):
         """Test that summaries of hard deleted collections are
@@ -555,10 +573,12 @@ class CollectionCreateAndDeleteUnitTests(CollectionServicesUnitTests):
             _count_at_least_editable_collection_summaries(self.owner_id), 0)
 
         # The collection summary model has been purged from the backend.
-        self.assertNotIn(self.COLLECTION_ID, [
-            collection.id
-            for collection in collection_models.CollectionSummaryModel.get_all(
-                include_deleted=True)])
+        self.assertNotIn(
+            self.COLLECTION_ID, [
+                collection.id
+                for collection in
+                collection_models.CollectionSummaryModel.get_all(
+                    include_deleted=True)])
 
     def test_collections_are_removed_from_index_when_deleted(self):
         """Tests that deleted collections are removed from the search index."""
@@ -623,8 +643,9 @@ class CollectionCreateAndDeleteUnitTests(CollectionServicesUnitTests):
             collection_services.get_collection_summary_by_id(
                 self.COLLECTION_ID))
 
-        self.assertEqual(retrieved_collection_summary.contributor_ids,
-                         [self.owner_id])
+        self.assertEqual(
+            retrieved_collection_summary.contributor_ids,
+            [self.owner_id])
         self.assertEqual(retrieved_collection_summary.title, 'A new title')
         self.assertEqual(
             retrieved_collection_summary.category, 'A new category')
@@ -650,7 +671,7 @@ class CollectionCreateAndDeleteUnitTests(CollectionServicesUnitTests):
         self.assertEqual(collection.version, 2)
 
 
-class LoadingAndDeletionOfCollectionDemosTest(CollectionServicesUnitTests):
+class LoadingAndDeletionOfCollectionDemosTests(CollectionServicesUnitTests):
 
     def test_loading_and_validation_and_deletion_of_demo_collections(self):
         """Test loading, validation and deletion of the demo collections."""
@@ -1329,6 +1350,7 @@ class CollectionCommitLogUnitTests(CollectionServicesUnitTests):
         # puts to the event log are asynchronous.
         @transaction_services.toplevel_wrapper
         def populate_datastore():
+            """A top level wrapper to populate the datastore."""
             collection_1 = self.save_new_valid_collection(
                 self.COLLECTION_ID_1, self.albert_id)
 
@@ -1394,15 +1416,16 @@ class CollectionSearchTests(CollectionServicesUnitTests):
             return ids
 
         add_docs_counter = test_utils.CallCounter(mock_add_documents_to_index)
-        add_docs_swap = self.swap(gae_search_services,
-                                  'add_documents_to_index',
-                                  add_docs_counter)
+        add_docs_swap = self.swap(
+            gae_search_services,
+            'add_documents_to_index',
+            add_docs_counter)
 
         for ind in xrange(5):
             self.save_new_valid_collection(
                 all_collection_ids[ind],
                 self.owner_id,
-                all_collection_titles[ind],
+                title=all_collection_titles[ind],
                 category=all_collection_categories[ind])
 
         # We're only publishing the first 4 collections, so we're not
@@ -1494,6 +1517,7 @@ class CollectionSummaryTests(CollectionServicesUnitTests):
             [albert_id, bob_id])
 
     def _check_contributors_summary(self, collection_id, expected):
+        """Checks the contributors summary with the expected summary."""
         contributors_summary = collection_services.get_collection_summary_by_id(
             collection_id).contributors_summary
         self.assertEqual(expected, contributors_summary)
@@ -1512,22 +1536,25 @@ class CollectionSummaryTests(CollectionServicesUnitTests):
             'property_name': 'title',
             'new_value': 'Collection Bob title'
         }]
-         # Have Bob update that collection. Version 2.
+        # Have Bob update that collection. Version 2.
         collection_services.update_collection(
             bob_id, self.COLLECTION_ID, changelist_cmds, 'Changed title.')
-        self._check_contributors_summary(self.COLLECTION_ID,
-                                         {albert_id: 1, bob_id: 1})
+        self._check_contributors_summary(
+            self.COLLECTION_ID,
+            {albert_id: 1, bob_id: 1})
         # Have Bob update that collection. Version 3.
         collection_services.update_collection(
             bob_id, self.COLLECTION_ID, changelist_cmds, 'Changed title.')
-        self._check_contributors_summary(self.COLLECTION_ID,
-                                         {albert_id: 1, bob_id: 2})
+        self._check_contributors_summary(
+            self.COLLECTION_ID,
+            {albert_id: 1, bob_id: 2})
 
         # Have Albert update that collection. Version 4.
         collection_services.update_collection(
             albert_id, self.COLLECTION_ID, changelist_cmds, 'Changed title.')
-        self._check_contributors_summary(self.COLLECTION_ID,
-                                         {albert_id: 2, bob_id: 2})
+        self._check_contributors_summary(
+            self.COLLECTION_ID,
+            {albert_id: 2, bob_id: 2})
 
         # TODO(madiyar): uncomment after revert_collection implementation
         # Have Albert revert to version 3. Version 5
@@ -1537,7 +1564,7 @@ class CollectionSummaryTests(CollectionServicesUnitTests):
         #                                 {albert_id: 1, bob_id: 2})
 
 
-class GetCollectionAndCollectionRightsTest(CollectionServicesUnitTests):
+class GetCollectionAndCollectionRightsTests(CollectionServicesUnitTests):
 
     def test_get_collection_and_collection_rights_object(self):
         collection_id = self.COLLECTION_ID

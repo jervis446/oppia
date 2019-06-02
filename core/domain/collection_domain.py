@@ -101,9 +101,8 @@ class CollectionChange(object):
                     - 'edit_collection_property' (with property_name, new_value
                         and, optionally, old_value)
                     - 'migrate_schema' (with from_version and to_version)
-            For a collection node, property_name must be one of
-            COLLECTION_NODE_PROPERTIES. For a collection, property_name must be
-            one of COLLECTION_PROPERTIES.
+            For a collection, property_name must be one of
+            COLLECTION_PROPERTIES.
 
         Raises:
             Exception: The given change_dict is not valid.
@@ -120,9 +119,6 @@ class CollectionChange(object):
             self.first_index = change_dict['first_index']
             self.second_index = change_dict['second_index']
         elif self.cmd == CMD_EDIT_COLLECTION_NODE_PROPERTY:
-            if (change_dict['property_name'] not in
-                    self.COLLECTION_NODE_PROPERTIES):
-                raise Exception('Invalid change_dict: %s' % change_dict)
             self.exploration_id = change_dict['exploration_id']
             self.property_name = change_dict['property_name']
             self.new_value = change_dict['new_value']
@@ -149,71 +145,6 @@ class CollectionChange(object):
             self.skill_id = change_dict['skill_id']
         else:
             raise Exception('Invalid change_dict: %s' % change_dict)
-
-
-class CollectionCommitLogEntry(object):
-    """Value object representing a commit to an collection."""
-
-    def __init__(
-            self, created_on, last_updated, user_id, username, collection_id,
-            commit_type, commit_message, commit_cmds, version,
-            post_commit_status, post_commit_community_owned,
-            post_commit_is_private):
-        """Initializes a CollectionCommitLogEntry domain object.
-
-        Args:
-            created_on: datetime.datetime. Date and time when the collection
-                commits was created.
-            last_updated: datetime.datetime. Date and time when the collection
-                commits was last updated.
-            user_id: str. User id of the user who has made the commit.
-            username: str. Username of the user who has made the commit.
-            collection_id: str. Id of the collection.
-            commit_type: str. The type of commit.
-            commit_message: str. A description of changes made to the
-                collection.
-            commit_cmds: list(dict). A list of change commands made to the
-                given collection.
-            version: int. The version of the collection.
-            post_commit_status: str. The new collection status after the
-                commit.
-            post_commit_community_owned: bool. Whether the collection is
-                community-owned after the edit event.
-            post_commit_is_private: bool. Whether the collection is private
-                after the edit event.
-        """
-        self.created_on = created_on
-        self.last_updated = last_updated
-        self.user_id = user_id
-        self.username = username
-        self.collection_id = collection_id
-        self.commit_type = commit_type
-        self.commit_message = commit_message
-        self.commit_cmds = commit_cmds
-        self.version = version
-        self.post_commit_status = post_commit_status
-        self.post_commit_community_owned = post_commit_community_owned
-        self.post_commit_is_private = post_commit_is_private
-
-    def to_dict(self):
-        """Returns a dict representing this CollectionCommitLogEntry domain
-            object. This omits created_on, user_id and (for now) commit_cmds.
-
-        Returns:
-            A dict, mapping all fields of CollectionCommitLogEntry instance,
-            except created_on, user_id and (for now) commit_cmds field.
-        """
-        return {
-            'last_updated': utils.get_time_in_millisecs(self.last_updated),
-            'username': self.username,
-            'collection_id': self.collection_id,
-            'commit_type': self.commit_type,
-            'commit_message': self.commit_message,
-            'version': self.version,
-            'post_commit_status': self.post_commit_status,
-            'post_commit_community_owned': self.post_commit_community_owned,
-            'post_commit_is_private': self.post_commit_is_private,
-        }
 
 
 class CollectionNode(object):
@@ -283,9 +214,10 @@ class CollectionNode(object):
 class Collection(object):
     """Domain object for an Oppia collection."""
 
-    def __init__(self, collection_id, title, category, objective,
-                 language_code, tags, schema_version, nodes,
-                 version, created_on=None, last_updated=None):
+    def __init__(
+            self, collection_id, title, category, objective,
+            language_code, tags, schema_version, nodes,
+            version, created_on=None, last_updated=None):
         """Constructs a new collection given all the information necessary to
         represent a collection.
 
@@ -747,7 +679,7 @@ class Collection(object):
            returns None.
 
         Args:
-            completed_exploration_ids: list(str). List of completed exploration
+            completed_exp_ids: list(str). List of completed exploration
                 ids.
 
         Returns:
@@ -774,9 +706,9 @@ class Collection(object):
         """
         exploration_just_unlocked = None
 
-        for index in range(0, len(self.nodes)-1):
+        for index in range(0, len(self.nodes) - 1):
             if self.nodes[index].exploration_id == current_exploration_id:
-                exploration_just_unlocked = self.nodes[index+1].exploration_id
+                exploration_just_unlocked = self.nodes[index + 1].exploration_id
                 break
 
         return exploration_just_unlocked
@@ -788,7 +720,7 @@ class Collection(object):
         Args:
             collection_id: str. The id of the collection.
 
-        Returs:
+        Returns:
             bool. True if the collection is a demo else False.
         """
         return collection_id in feconf.DEMO_COLLECTIONS
@@ -963,17 +895,9 @@ class Collection(object):
             raise utils.ValidationError(
                 'A language must be specified (in the \'Settings\' tab).')
 
-        if not any([self.language_code == lc['code']
-                    for lc in constants.ALL_LANGUAGE_CODES]):
+        if not utils.is_valid_language_code(self.language_code):
             raise utils.ValidationError(
                 'Invalid language code: %s' % self.language_code)
-
-        # TODO(sll): Remove this check once App Engine supports 3-letter
-        # language codes in search.
-        if len(self.language_code) != 2:
-            raise utils.ValidationError(
-                'Invalid language_code, it should have exactly 2 letters: %s' %
-                self.language_code)
 
         if not isinstance(self.tags, list):
             raise utils.ValidationError(
@@ -1050,20 +974,16 @@ class Collection(object):
                     'Expected to have at least 1 exploration in the '
                     'collection.')
 
-            # Ensure the collection may be started.
-            if not self.first_exploration_id:
-                raise utils.ValidationError(
-                    'Expected to have at least 1 exploration.')
-
 
 class CollectionSummary(object):
     """Domain object for an Oppia collection summary."""
 
-    def __init__(self, collection_id, title, category, objective, language_code,
-                 tags, status, community_owned, owner_ids, editor_ids,
-                 viewer_ids, contributor_ids, contributors_summary, version,
-                 node_count, collection_model_created_on,
-                 collection_model_last_updated):
+    def __init__(
+            self, collection_id, title, category, objective, language_code,
+            tags, status, community_owned, owner_ids, editor_ids,
+            viewer_ids, contributor_ids, contributors_summary, version,
+            node_count, collection_model_created_on,
+            collection_model_last_updated):
         """Constructs a CollectionSummary domain object.
 
         Args:

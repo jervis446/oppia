@@ -39,6 +39,7 @@ def send_mail(
       - html_body: str. The HTML body of the email. Must fit in a datastore
           entity.
       - bcc_admin: bool. Whether to bcc feconf.ADMIN_EMAIL_ADDRESS on the email.
+      - reply_to_id: str. The unique id of the sender.
 
     Raises:
       Exception: if the configuration in feconf.py forbids emails from being
@@ -122,7 +123,7 @@ def send_bulk_mail(
     # For more detail check following link:
     # https://documentation.mailgun.com/user_manual.html#batch-sending
     recipient_email_sets = [
-        recipient_emails[i:i+1000]
+        recipient_emails[i:i + 1000]
         for i in xrange(0, len(recipient_emails), 1000)]
 
     for email_set in recipient_email_sets:

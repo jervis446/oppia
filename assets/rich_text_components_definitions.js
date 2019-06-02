@@ -7,6 +7,11 @@
  * 3. All values and keys must be constant, you can't use any JavaScript
  *    functions.
  */
+
+/**
+ * @fileoverview Definitions for rich text components.
+ */
+
 var richTextComponents = {
   "Collapsible": {
     "backend_id": "Collapsible",
@@ -15,7 +20,6 @@ var richTextComponents = {
     "frontend_id": "collapsible",
     "tooltip": "Insert collapsible block",
     "icon_data_url": "/rich_text_components/Collapsible/Collapsible.png",
-    "preview_url_template": "/rich_text_components/Collapsible/CollapsiblePreview.png",
     "is_complex": true,
     "requires_fs": false,
     "is_block_element": true,
@@ -45,7 +49,6 @@ var richTextComponents = {
     "frontend_id": "image",
     "tooltip": "Insert image",
     "icon_data_url": "/rich_text_components/Image/Image.png",
-    "preview_url_template": "/imagehandler/<[explorationId]>/<[filepath]>",
     "is_complex": false,
     "requires_fs": true,
     "is_block_element": true,
@@ -86,7 +89,6 @@ var richTextComponents = {
     "frontend_id": "link",
     "tooltip": "Insert link",
     "icon_data_url": "/rich_text_components/Link/Link.png",
-    "preview_url_template": "/rich_text_components/Link/LinkPreview.png",
     "is_complex": false,
     "requires_fs": false,
     "is_block_element": false,
@@ -97,7 +99,7 @@ var richTextComponents = {
         "type": "custom",
         "obj_type": "SanitizedUrl"
       },
-      "default_value": "https://www.example.com"
+      "default_value": ""
     }, {
       "name": "text",
       "description": "The link text. If left blank, the link URL will be used.",
@@ -114,7 +116,6 @@ var richTextComponents = {
     "frontend_id": "math",
     "tooltip": "Insert mathematical formula",
     "icon_data_url": "/rich_text_components/Math/Math.png",
-    "preview_url_template": "/rich_text_components/Math/MathPreview.png",
     "is_complex": false,
     "requires_fs": false,
     "is_block_element": false,
@@ -135,7 +136,6 @@ var richTextComponents = {
     "frontend_id": "tabs",
     "tooltip": "Insert tabs (e.g. for hints)",
     "icon_data_url": "/rich_text_components/Tabs/Tabs.png",
-    "preview_url_template": "/rich_text_components/Tabs/TabsPreview.png",
     "is_complex": true,
     "requires_fs": false,
     "is_block_element": true,
@@ -143,32 +143,8 @@ var richTextComponents = {
       "name": "tab_contents",
       "description": "The tab titles and contents.",
       "schema": {
-        "type": "list",
-        "items": {
-          "type": "dict",
-          "properties": [{
-            "name": "title",
-            "description": "Tab title",
-            "schema": {
-              "type": "unicode",
-              "validators": [{
-                "id": "is_nonempty"
-              }]
-            }
-          }, {
-            "name": "content",
-            "description": "Tab content",
-            "schema": {
-              "type": "html",
-              "ui_config": {
-                "hide_complex_extensions": true
-              }
-            }
-          }]
-        },
-        "ui_config": {
-          "add_element_text": "Add new tab"
-        }
+        "type": "custom",
+        "obj_type": "ListOfTabs"
       },
       "default_value": [{
         "title": "Hint introduction",
@@ -186,7 +162,6 @@ var richTextComponents = {
     "frontend_id": "video",
     "tooltip": "Insert video",
     "icon_data_url": "/rich_text_components/Video/Video.png",
-    "preview_url_template": "https://img.youtube.com/vi/<[video_id]>/hqdefault.jpg",
     "is_complex": false,
     "requires_fs": false,
     "is_block_element": true,

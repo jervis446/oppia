@@ -22,15 +22,10 @@ echo Installing third-party JS libraries and zip files.
 $PYTHON_CMD scripts/install_third_party.py
 
 # Install third-party node modules needed for the build process.
-install_node_module ajv 5.0.0
-install_node_module eslint 4.19.0
-install_node_module eslint-plugin-angular 0.12.0
-install_node_module eslint-plugin-html 4.0.1
-install_node_module gulp 3.9.0
-install_node_module gulp-concat 2.6.0
-install_node_module through2 2.0.0
-install_node_module uglify-js 3.3.11
-install_node_module yargs 3.29.0
+$NPM_INSTALL --only=dev
+# This line removes the "npm ERR! missing:" messages. For reference, see this
+# thread: https://github.com/npm/npm/issues/19393#issuecomment-374076889
+$NPM_CMD dedupe
 
 # Download and install Skulpt. Skulpt is built using a Python script included
 # within the Skulpt repository (skulpt.py). This script normally requires
@@ -63,7 +58,12 @@ if [ ! "$NO_SKULPT" -a ! -d "$THIRD_PARTY_DIR/static/skulpt-0.10.0" ]; then
     # third party commands. These are only used for unit tests and generating
     # documentation and are not necessary when building Skulpt.
     sed -e "s/ret = test()/ret = 0/" $TOOLS_DIR/skulpt-0.10.0/skulpt/skulpt.py |\
-    sed -e "s/  doc()/  pass#doc()/" > $TMP_FILE
+    sed -e "s/  doc()/  pass#doc()/" |\
+    # This and the next command disable unit and compressed unit tests for the
+    # compressed distribution of Skulpt. These tests don't work on some
+    # Ubuntu environments and cause a libreadline dependency issue.
+    sed -e "s/ret = os.system(\"{0}/ret = 0 #os.system(\"{0}/" |\
+    sed -e "s/ret = rununits(opt=True)/ret = 0/" > $TMP_FILE
     mv $TMP_FILE $TOOLS_DIR/skulpt-0.10.0/skulpt/skulpt.py
     $PYTHON_CMD $TOOLS_DIR/skulpt-0.10.0/skulpt/skulpt.py dist
 
@@ -97,14 +97,26 @@ if ! type pip > /dev/null 2>&1 ; then
     exit 1
 fi
 
-echo Checking if pylint is installed in $TOOLS_DIR/pip_packages
-if [ ! -d "$TOOLS_DIR/pylint-1.7.1" ]; then
+function pip_install {
+  # Attempt standard pip install, or pass in --system if the local environment requires it.
+  # See https://github.com/pypa/pip/issues/3826 for context on when this situation may occur.
+  pip install "$@" || pip install --system "$@"
+}
+
+echo Checking if pylint is installed in $TOOLS_DIR
+if [ ! -d "$TOOLS_DIR/pylint-1.9.4" ]; then
   echo Installing Pylint
 
-  pip install pylint==1.7.1 --target="$TOOLS_DIR/pylint-1.7.1"
-  # Add __init__.py file so that pylint dependency backports are resolved
-  # correctly.
-  touch $TOOLS_DIR/pylint-1.7.1/backports/__init__.py
+  pip_install pylint==1.9.4 --target="$TOOLS_DIR/pylint-1.9.4"
+fi
+
+echo Checking if pylint-quotes is installed in $TOOLS_DIR
+if [ ! -d "$TOOLS_DIR/pylint-quotes-0.1.9" ]; then
+  echo Installing pylint-quotes
+  # Note that the URL redirects, so we pass in -L to tell curl to follow the redirect.
+  curl -o pylint-quotes-0.1.9.tar.gz -L https://github.com/edaniszewski/pylint-quotes/archive/0.1.9.tar.gz
+  tar xzf pylint-quotes-0.1.9.tar.gz -C $TOOLS_DIR
+  rm pylint-quotes-0.1.9.tar.gz
 fi
 
 # Install webtest.
@@ -129,27 +141,56 @@ fi
 
 # Install pycodestyle.
 echo Checking if pycodestyle is installed in third_party
-if [ ! -d "$TOOLS_DIR/pycodestyle-2.3.1" ]; then
+if [ ! -d "$TOOLS_DIR/pycodestyle-2.5.0" ]; then
   echo Installing pycodestyle
   # Note that the URL redirects, so we pass in -L to tell curl to follow the redirect.
-  curl -o pycodestyle-2.3.1.tar.gz -L https://pypi.python.org/packages/e1/88/0e2cbf412bd849ea6f1af1f97882add46a374f4ba1d2aea39353609150ad/pycodestyle-2.3.1.tar.gz
-  tar xzf pycodestyle-2.3.1.tar.gz -C $TOOLS_DIR
-  rm pycodestyle-2.3.1.tar.gz
+  curl -o pycodestyle-2.5.0.tar.gz -L https://files.pythonhosted.org/packages/1c/d1/41294da5915f4cae7f4b388cea6c2cd0d6cd53039788635f6875dfe8c72f/pycodestyle-2.5.0.tar.gz
+  tar xzf pycodestyle-2.5.0.tar.gz -C $TOOLS_DIR
+  rm pycodestyle-2.5.0.tar.gz
+fi
+
+# Install esprima.
+echo Checking if esprima is installed in third_party
+if [ ! -d "$TOOLS_DIR/esprima-4.0.1" ]; then
+  echo Installing esprima
+  # Note that the URL redirects, so we pass in -L to tell curl to follow the redirect.
+  curl -o esprima-4.0.1.tar.gz -L https://files.pythonhosted.org/packages/cc/a1/50fccd68a12bcfc27adfc9969c090286670a9109a0259f3f70943390b721/esprima-4.0.1.tar.gz
+  tar xzf esprima-4.0.1.tar.gz -C $TOOLS_DIR
+  rm esprima-4.0.1.tar.gz
 fi
 
 # Python API for browsermob-proxy.
-echo Checking if browsermob-proxy is installed in $TOOLS_DIR/pip_packages
+echo Checking if browsermob-proxy is installed in $TOOLS_DIR
 if [ ! -d "$TOOLS_DIR/browsermob-proxy-0.7.1" ]; then
   echo Installing browsermob-proxy
 
-  pip install browsermob-proxy==0.7.1 --target="$TOOLS_DIR/browsermob-proxy-0.7.1"
+  pip_install browsermob-proxy==0.7.1 --target="$TOOLS_DIR/browsermob-proxy-0.7.1"
 fi
 
-echo Checking if selenium is installed in $TOOLS_DIR/pip_packages
+echo Checking if selenium is installed in $TOOLS_DIR
 if [ ! -d "$TOOLS_DIR/selenium-2.53.2" ]; then
   echo Installing selenium
 
-  pip install selenium==2.53.2 --target="$TOOLS_DIR/selenium-2.53.2"
+  pip_install selenium==2.53.2 --target="$TOOLS_DIR/selenium-2.53.2"
+fi
+
+echo Checking if PIL is installed in $TOOLS_DIR
+if [ ! -d "$TOOLS_DIR/PIL-1.1.7" ]; then
+  echo Installing PIL
+
+  pip_install http://effbot.org/downloads/Imaging-1.1.7.tar.gz --target="$TOOLS_DIR/PIL-1.1.7"
+
+  if [[ $? != 0 && ${OS} == "Darwin" ]]; then
+    echo "  PIL install failed. See troubleshooting instructions at:"
+    echo "    https://github.com/oppia/oppia/wiki/Troubleshooting#mac-os"
+  fi
+fi
+
+echo Checking if PyGithub is installed in $TOOLS_DIR
+if [ ! -d "$TOOLS_DIR/PyGithub-1.43.5" ]; then
+  echo Installing PyGithub
+
+  pip_install PyGithub==1.43.5 --target="$TOOLS_DIR/PyGithub-1.43.5"
 fi
 
 # install pre-push script

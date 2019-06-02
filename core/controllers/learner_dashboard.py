@@ -14,12 +14,13 @@
 
 """Controllers for the learner dashboard."""
 
+from core.controllers import acl_decorators
 from core.controllers import base
-from core.domain import acl_decorators
 from core.domain import exp_services
 from core.domain import feedback_services
 from core.domain import learner_progress_services
 from core.domain import subscription_services
+from core.domain import suggestion_services
 from core.domain import summary_services
 from core.domain import user_services
 import feconf
@@ -32,12 +33,7 @@ class LearnerDashboardPage(base.BaseHandler):
     @acl_decorators.can_access_learner_dashboard
     def get(self):
         """Handles GET requests."""
-        self.values.update({
-            'nav_mode': feconf.NAV_MODE_LEARNER_DASHBOARD
-        })
-        self.render_template(
-            'pages/learner_dashboard/learner_dashboard.html',
-            redirect_url_on_logout='/')
+        self.render_template('dist/learner_dashboard.html')
 
 
 class LearnerDashboardHandler(base.BaseHandler):
@@ -48,9 +44,10 @@ class LearnerDashboardHandler(base.BaseHandler):
     @acl_decorators.can_access_learner_dashboard
     def get(self):
         """Handles GET requests."""
-        (learner_progress, number_of_nonexistent_activities,
-         completed_to_incomplete_collections) = (
-             learner_progress_services.get_activity_progress(self.user_id))
+        (
+            learner_progress, number_of_nonexistent_activities,
+            completed_to_incomplete_collections) = (
+                learner_progress_services.get_activity_progress(self.user_id))
 
         completed_exp_summary_dicts = (
             summary_services.get_displayable_exp_summary_dicts(
@@ -126,6 +123,7 @@ class LearnerDashboardIdsHandler(base.BaseHandler):
     the activities currently being pursued, and the activities present in
     the playlist.
     """
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
 
     @acl_decorators.can_access_learner_dashboard
     def get(self):
@@ -144,30 +142,33 @@ class LearnerDashboardIdsHandler(base.BaseHandler):
 class LearnerDashboardFeedbackThreadHandler(base.BaseHandler):
     """Gets all the messages in a thread."""
 
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+
     @acl_decorators.can_access_learner_dashboard
-    def get(self, exploration_id, thread_id):
+    def get(self, thread_id):
         """Handles GET requests."""
-        messages = feedback_services.get_messages(
-            exploration_id, thread_id)
+        messages = feedback_services.get_messages(thread_id)
         author_ids = [m.author_id for m in messages]
         authors_settings = user_services.get_users_settings(author_ids)
 
         message_ids = [m.message_id for m in messages]
         feedback_services.update_messages_read_by_the_user(
-            self.user_id, exploration_id, thread_id, message_ids)
+            self.user_id, thread_id, message_ids)
 
         message_summary_list = []
-        suggestion = feedback_services.get_suggestion(exploration_id, thread_id)
+        suggestion = suggestion_services.get_suggestion_by_id(thread_id)
+        suggestion_thread = feedback_services.get_thread(thread_id)
 
+        exploration_id = feedback_services.get_exp_id_from_thread_id(thread_id)
         if suggestion:
             exploration = exp_services.get_exploration_by_id(exploration_id)
             current_content_html = (
                 exploration.states[
-                    suggestion.state_name].content.html)
+                    suggestion.change.state_name].content.html)
             suggestion_summary = {
-                'suggestion_html': suggestion.suggestion_html,
+                'suggestion_html': suggestion.change.new_value['html'],
                 'current_content_html': current_content_html,
-                'description': suggestion.description,
+                'description': suggestion_thread.subject,
                 'author_username': authors_settings[0].username,
                 'author_picture_data_url': (
                     authors_settings[0].profile_picture_data_url)

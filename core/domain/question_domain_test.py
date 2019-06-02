@@ -1,6 +1,4 @@
-# coding: utf-8
-#
-# Copyright 2016 The Oppia Authors. All Rights Reserved.
+# Copyright 2018 The Oppia Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,147 +13,339 @@
 # limitations under the License.
 
 """Tests for question domain objects."""
+import datetime
 
-from core.domain import exp_domain
 from core.domain import question_domain
+from core.domain import state_domain
 from core.tests import test_utils
+import feconf
 import utils
+
+
+class QuestionChangeTest(test_utils.GenericTestBase):
+    """Test for Question Change object."""
+
+    def test_to_dict(self):
+        """Test to verify to_dict method of the Question Change object."""
+        expected_object_dict = {
+            'cmd': 'update_question_property',
+            'property_name': 'question_state_data',
+            'new_value': 'new_value',
+            'old_value': 'old_value',
+        }
+
+        change_dict = {
+            'cmd': 'update_question_property',
+            'property_name': 'question_state_data',
+            'new_value': 'new_value',
+            'old_value': 'old_value',
+        }
+        observed_object = question_domain.QuestionChange(
+            change_dict=change_dict,
+        )
+
+        self.assertEqual(expected_object_dict, observed_object.to_dict())
+
+    def test_change_dict_without_cmd(self):
+        """Test to verify __init__ method of the Question Change object
+        when change_dict is without cmd key.
+        """
+        self.assertRaises(
+            Exception,
+            callableObj=question_domain.QuestionChange,
+            change_dict={}
+        )
+
+    def test_change_dict_with_wrong_cmd(self):
+        """Test to verify __init__ method of the Question Change object
+        when change_dict is with wrong cmd value.
+        """
+        self.assertRaises(
+            Exception,
+            callableObj=question_domain.QuestionChange,
+            change_dict={'cmd': 'wrong', }
+        )
+
+    def test_update_question_property_with_wrong_property_name(self):
+        """Test to verify __init__ method of the Question Change object
+        when cmd is update_question_property and wrong property_name is given.
+        """
+        self.assertRaises(
+            Exception,
+            callableObj=question_domain.QuestionChange,
+            change_dict={
+                'cmd': 'update_question_property',
+                'property_name': 'wrong',
+            }
+        )
+
+    def test_create_new_fully_specified_question(self):
+        """Test to verify __init__ method of the Question Change object
+        when cmd is create_new_fully_specified_question.
+        """
+        change_dict = {
+            'cmd': 'create_new_fully_specified_question',
+            'question_dict': {},
+            'skill_id': '10',
+        }
+        observed_object = question_domain.QuestionChange(
+            change_dict=change_dict,
+        )
+
+        self.assertEqual('10', observed_object.skill_id)
+        self.assertEqual({}, observed_object.question_dict)
+
+    def test_migrate_state_schema_to_latest_version(self):
+        """Test to verify __init__ method of the Question Change object
+        when cmd is migrate_state_schema_to_latest_version.
+        """
+        change_dict = {
+            'cmd': 'migrate_state_schema_to_latest_version',
+            'from_version': 0,
+            'to_version': 10,
+        }
+        observed_object = question_domain.QuestionChange(
+            change_dict=change_dict,
+        )
+
+        self.assertEqual(0, observed_object.from_version)
+        self.assertEqual(10, observed_object.to_version)
 
 
 class QuestionDomainTest(test_utils.GenericTestBase):
     """Tests for Question domain object."""
 
-    def test_to_dict(self):
-        expected_object = {
-            'question_id': 'col1.random',
-            'title': 'abc',
-            'question_data': {},
-            'question_data_schema_version': 1,
-            'language_code': 'en'
+    def setUp(self):
+        """Before each individual test, create a question."""
+        super(QuestionDomainTest, self).setUp()
+        question_state_data = self._create_valid_question_data('ABC')
+        self.question = question_domain.Question(
+            'question_id', question_state_data,
+            feconf.CURRENT_STATE_SCHEMA_VERSION, 'en', 1)
+
+    def test_to_and_from_dict(self):
+        """Test to verify to_dict and from_dict methods
+        of Question domain object.
+        """
+        default_question_state_data = (
+            question_domain.Question.create_default_question_state())
+        question_dict = {
+            'id': 'col1.random',
+            'question_state_data': default_question_state_data.to_dict(),
+            'question_state_data_schema_version': (
+                feconf.CURRENT_STATE_SCHEMA_VERSION),
+            'language_code': 'en',
+            'version': 1
         }
 
-        observed_object = question_domain.Question(
-            expected_object['question_id'], expected_object['title'],
-            expected_object['question_data'],
-            expected_object['question_data_schema_version'],
-            expected_object['language_code'])
-        self.assertDictEqual(expected_object, observed_object.to_dict())
+        observed_object = question_domain.Question.from_dict(question_dict)
+        self.assertEqual(question_dict, observed_object.to_dict())
 
-    def test_validation(self):
-        """Test to verify validate method of Question domain object."""
+    def _assert_validation_error(self, expected_error_substring):
+        """Checks that the skill passes strict validation."""
+        with self.assertRaisesRegexp(
+            utils.ValidationError, expected_error_substring):
+            self.question.validate()
 
-        state = exp_domain.State.create_default_state('ABC')
-        question_data = state.to_dict()
+    def test_strict_validation(self):
+        """Test to verify validate method of Question domain object with
+        strict as True.
+        """
+        state = self.question.question_state_data
+        state.interaction.solution = None
+        self._assert_validation_error(
+            'Expected the question to have a solution')
+        state.interaction.hints = []
+        self._assert_validation_error(
+            'Expected the question to have at least one hint')
+        state.interaction.default_outcome.dest = 'abc'
+        self._assert_validation_error(
+            'Expected all answer groups to have destination as None.')
+        state.interaction.default_outcome.labelled_as_correct = False
+        self._assert_validation_error(
+            'Expected at least one answer group to have a correct answer')
 
-        test_object = {
-            'question_id': 'col1.random',
-            'title': 'abc',
-            'question_data': question_data,
-            'question_data_schema_version': 1,
-            'language_code': 'en'
-        }
+    def test_strict_validation_for_answer_groups(self):
+        """Test to verify validate method of Question domain object with
+        strict as True for interaction with answer group.
+        """
+        state = self.question.question_state_data
+        state.interaction.default_outcome.labelled_as_correct = False
+        state.interaction.answer_groups = [
+            state_domain.AnswerGroup.from_dict({
+                'outcome': {
+                    'dest': 'abc',
+                    'feedback': {
+                        'content_id': 'feedback_1',
+                        'html': 'Feedback'
+                    },
+                    'labelled_as_correct': True,
+                    'param_changes': [],
+                    'refresher_exploration_id': None,
+                    'missing_prerequisite_skill_id': None
+                },
+                'rule_specs': [{
+                    'inputs': {
+                        'x': 'Test'
+                    },
+                    'rule_type': 'Contains'
+                }],
+                'training_data': [],
+                'tagged_misconception_id': None
+            })
+        ]
 
-        question = question_domain.Question(
-            test_object['question_id'], test_object['title'],
-            test_object['question_data'],
-            test_object['question_data_schema_version'],
-            test_object['language_code'])
+        self._assert_validation_error(
+            'Expected all answer groups to have destination as None.')
 
-        question.question_id = 123
-        with self.assertRaisesRegexp(utils.ValidationError, (
-            'Expected ID to be a string')):
-            question.validate()
+    def test_strict_validation_passes(self):
+        """Test to verify validate method of a finalized Question domain object
+        with correct input.
+        """
+        try:
+            self.question.validate()
+        except utils.ValidationError:
+            self.fail(msg='validate() raised ValidationError unexpectedly!')
 
-        question.question_id = 'col1.random'
-        question.update_title(1)
-        with self.assertRaisesRegexp(utils.ValidationError, (
-            'Expected title to be a string')):
-            question.validate()
+    def test_not_strict_validation(self):
+        """Test to verify validate method of Question domain object with
+        strict as False.
+        """
+        self.question.language_code = 'abc'
+        self._assert_validation_error('Invalid language code')
 
-        question.update_title('ABC')
-        question.update_question_data([])
-        with self.assertRaisesRegexp(utils.ValidationError, (
-            'Expected question_data to be a dict')):
-            question.validate()
+        self.question.question_state_data = 'State data'
+        self._assert_validation_error(
+            'Expected question state data to be a State object')
 
-        question.update_question_data(question_data)
-        question.question_data_schema_version = 'abc'
-        with self.assertRaisesRegexp(utils.ValidationError, (
-            'Expected question_data_schema_version to be a integer')):
-            question.validate()
+        self.question.question_state_data_schema_version = 'abc'
+        self._assert_validation_error(
+            'Expected schema version to be an integer')
 
-        question.question_data_schema_version = 1
+        self.question.language_code = 1
+        self._assert_validation_error('Expected language_code to be a string')
 
-        question.update_language_code('abc')
-        with self.assertRaisesRegexp(utils.ValidationError, (
-            'Invalid language code')):
-            question.validate()
+        self.question.version = 'abc'
+        self._assert_validation_error('Expected version to be an integer')
 
-    def test_from_dict(self):
-        state = exp_domain.State.create_default_state('ABC')
-        question_data = state.to_dict()
-
-        expected_object = {
-            'question_id': 'col1.random',
-            'title': 'abc',
-            'question_data': question_data,
-            'question_data_schema_version': 1,
-            'language_code': 'en'
-        }
-
-        question = question_domain.Question.from_dict(expected_object)
-        self.assertDictEqual(expected_object, question.to_dict())
+        self.question.id = 123
+        self._assert_validation_error('Expected ID to be a string')
 
     def test_create_default_question(self):
         """Test to verify create_default_question method of the Question domain
         object.
         """
-
         question_id = 'col1.random'
-        title = ''
-        language_code = 'en'
         question = question_domain.Question.create_default_question(
-            question_id, title, language_code)
+            question_id)
+        default_question_data = (
+            question_domain.Question.create_default_question_state().to_dict())
 
-        self.assertEqual(question.question_id, question_id)
-        self.assertEqual(question.question_data_schema_version, 1)
-        self.assertEqual(question.question_data, {})
-        self.assertEqual(question.title, '')
+        self.assertEqual(question.id, question_id)
+        self.assertEqual(
+            question.question_state_data.to_dict(), default_question_data)
         self.assertEqual(question.language_code, 'en')
+        self.assertEqual(question.version, 0)
 
-    def test_update_methods(self):
-        """Tests update_title, update_question_data and update_language_code
-        methods of the question domain object.
+    def test_update_language_code(self):
+        """Test to verify update_language_code method of the Question domain
+        object.
         """
-        state = exp_domain.State.create_default_state('ABC')
-        question_data = state.to_dict()
+        self.question.update_language_code('pl')
 
-        test_object = {
-            'question_id': 'col1.random',
-            'title': 'abc',
-            'question_data': question_data,
-            'question_data_schema_version': 1,
-            'language_code': 'en'
-        }
+        self.assertEqual('pl', self.question.language_code)
 
-        question = question_domain.Question.from_dict(test_object)
-        question.update_title('hello')
-        self.assertEqual(question.title, 'hello')
+    def test_update_question_state_data(self):
+        """Test to verify update_question_state_data method of the Question
+        domain object.
+        """
+        question_state_data = self._create_valid_question_data('Test')
 
-        question.update_question_data({})
-        self.assertEqual(question.question_data, {})
+        self.question.update_question_state_data(question_state_data.to_dict())
 
-        question.update_language_code('es')
-        self.assertEqual(question.language_code, 'es')
+        self.assertEqual(
+            question_state_data.to_dict(),
+            self.question.question_state_data.to_dict()
+        )
 
 
-class QuestionSummaryDomainTest(test_utils.GenericTestBase):
-    """Test for Question Summary Domain object."""
+class QuestionSummaryTest(test_utils.GenericTestBase):
+    """Test for Question Summary object."""
 
     def test_to_dict(self):
+        """Test to verify to_dict method of the Question Summary
+        object.
+        """
+        fake_date_created = datetime.datetime(2018, 11, 17, 20, 2, 45, 0)
+        fake_date_updated = datetime.datetime(2018, 11, 17, 20, 3, 14, 0)
         expected_object_dict = {
-            'question_id': 'abc',
-            'question_title': 'hello'
+            'id': 'question_1',
+            'creator_id': 'user_1',
+            'question_content': u'question content',
+            'last_updated_msec': utils.get_time_in_millisecs(fake_date_updated),
+            'created_on_msec': utils.get_time_in_millisecs(fake_date_created),
         }
-        observed_object = question_domain.QuestionSummary('abc', 'hello')
+
+        observed_object = question_domain.QuestionSummary(
+            creator_id='user_1',
+            question_id='question_1',
+            question_content='question content',
+            question_model_created_on=fake_date_created,
+            question_model_last_updated=fake_date_updated,
+        )
+
         self.assertEqual(expected_object_dict, observed_object.to_dict())
+
+
+class QuestionSkillLinkDomainTest(test_utils.GenericTestBase):
+    """Test for Question Skill Link Domain object."""
+
+    def test_to_dict(self):
+        """Test to verify to_dict method of the Question Skill Link Domain
+        object.
+        """
+        expected_object_dict = {
+            'question_id': 'testquestion',
+            'skill_id': 'testskill',
+            'skill_description': 'testskilldescription',
+            'skill_difficulty': 0.5,
+        }
+        observed_object = question_domain.QuestionSkillLink(
+            'testquestion', 'testskill', 'testskilldescription', 0.5)
+        self.assertEqual(expected_object_dict, observed_object.to_dict())
+
+
+class QuestionRightsDomainTest(test_utils.GenericTestBase):
+    """Test for Question Rights Domain object."""
+
+    def setUp(self):
+        """Before each individual test, create a question and user."""
+        super(QuestionRightsDomainTest, self).setUp()
+        self.question_id = 'question_id'
+        self.signup('user@example.com', 'User')
+        self.question = question_domain.Question.create_default_question(
+            self.question_id)
+
+        self.user_id = self.get_user_id_from_email('user@example.com')
+
+    def test_to_dict(self):
+        """Test to verify to_dict method of the Question Rights Domain
+        object.
+        """
+        question_rights = question_domain.QuestionRights(
+            self.question_id, self.user_id)
+        expected_dict = {
+            'question_id': self.question_id,
+            'creator_id': self.user_id
+        }
+
+        self.assertEqual(expected_dict, question_rights.to_dict())
+
+    def test_is_creator(self):
+        """Test to verify is_creator method of the Question Rights Domain
+        object.
+        """
+        question_rights = question_domain.QuestionRights(
+            self.question_id, self.user_id)
+        self.assertTrue(question_rights.is_creator(self.user_id))
+        self.assertFalse(question_rights.is_creator('fakeuser'))

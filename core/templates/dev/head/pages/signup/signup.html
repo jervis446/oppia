@@ -1,6 +1,8 @@
-{% extends 'pages/base.html' %}
+{% extends 'dist/base.html' %}
 
-{% block maintitle %}I18N_SIGNUP_PAGE_TITLE{% endblock maintitle %}
+{% block maintitle %}
+  Join the community - Oppia
+{% endblock maintitle %}
 
 {% block navbar_breadcrumb %}
   <ul class="nav navbar-nav oppia-navbar-breadcrumb">
@@ -13,10 +15,6 @@
 
 {% block header_js %}
   {{ super() }}
-  <script type="text/javascript">
-    GLOBALS.CAN_SEND_EMAILS = JSON.parse(
-      '{{CAN_SEND_EMAILS|js_string}}');
-  </script>
 {% endblock header_js %}
 
 {% block content %}
@@ -91,7 +89,7 @@
           <label>
             <input type="checkbox" ng-model="hasAgreedToLatestTerms"
                    class="protractor-test-agree-to-terms-checkbox">
-            <span translate="I18N_SIGNUP_AGREE_LICENSE_DESCRIPTION" translate-value-sitename="{{SITE_NAME}}">
+            <span translate="I18N_SIGNUP_AGREE_LICENSE_DESCRIPTION" translate-value-sitename="<[siteName]>">
             </span>
           </label>
         </div>
@@ -111,5 +109,13 @@
 
 {% block footer_js %}
   {{ super() }}
-  <script src="{{TEMPLATE_DIR_PREFIX}}/pages/signup/Signup.js"></script>
+  <!-- This code is used for inserting webpack bundles
+     https://github.com/jantimon/html-webpack-plugin#writing-your-own-templates -->
+  <% for (var chunk in htmlWebpackPlugin.files.js) { %>
+    <% if (webpackConfig.mode == 'production') { %>
+      <script src="/build/templates/head/dist/<%= htmlWebpackPlugin.files.js[chunk] %>"></script>
+    <% } else { %>
+      <script src="/dist/<%= htmlWebpackPlugin.files.js[chunk] %>"></script>
+    <% } %>
+  <% } %>
 {% endblock footer_js %}

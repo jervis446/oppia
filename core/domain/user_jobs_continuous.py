@@ -19,7 +19,6 @@ import logging
 
 from core import jobs
 from core.domain import exp_services
-from core.domain import feedback_domain
 from core.domain import feedback_services
 from core.domain import stats_services
 from core.platform import models
@@ -124,10 +123,12 @@ class RecentUpdatesMRJobManager(
         as those from the Oppia migration bot).
 
         Args:
-            activity_model_cls: The storage layer object for an activity, such
-                as exp_models.ExplorationModel.
-            activity_ids_list: A list of activity IDs (such as exploration IDS)
-                for which the latest commits will be retrieved.
+            activity_model_cls: ExplorationModel|CollectionModel. The
+                storage layer object for an activity, such as
+                exp_models.ExplorationModel.
+            activity_ids_list: list(str). A list of activity IDs
+                (such as exploration IDS) for which
+                the latest commits will be retrieved.
             activity_type: str. The type of activity being referenced, such
                 as 'exploration' or 'collection'.
             commit_type: str. This represents the activity update commit
@@ -239,7 +240,7 @@ class RecentUpdatesMRJobManager(
 
         exploration_ids_list = item.activity_ids
         collection_ids_list = item.collection_ids
-        feedback_thread_ids_list = item.feedback_thread_ids
+        feedback_thread_ids_list = item.general_feedback_thread_ids
 
         (most_recent_activity_commits, tracked_exp_models_for_feedback) = (
             RecentUpdatesMRJobManager._get_most_recent_activity_commits(
@@ -248,7 +249,8 @@ class RecentUpdatesMRJobManager(
                 feconf.COMMIT_MESSAGE_EXPLORATION_DELETED))
 
         for exp_model in tracked_exp_models_for_feedback:
-            threads = feedback_services.get_all_threads(exp_model.id, False)
+            threads = feedback_services.get_all_threads(
+                feconf.ENTITY_TYPE_EXPLORATION, exp_model.id, False)
             for thread in threads:
                 if thread.id not in feedback_thread_ids_list:
                     feedback_thread_ids_list.append(thread.id)
@@ -265,26 +267,23 @@ class RecentUpdatesMRJobManager(
             yield (reducer_key, recent_activity_commit_dict)
 
         for feedback_thread_id in feedback_thread_ids_list:
-            exp_id = (
-                feedback_domain.FeedbackThread.get_exp_id_from_full_thread_id(
-                    feedback_thread_id))
-            thread_id = (
-                feedback_domain.FeedbackThread.get_thread_id_from_full_thread_id( # pylint: disable=line-too-long
-                    feedback_thread_id))
             last_message = (
-                feedback_models.FeedbackMessageModel.get_most_recent_message(
-                    exp_id, thread_id))
+                feedback_models.GeneralFeedbackMessageModel
+                .get_most_recent_message(feedback_thread_id))
+            exploration_id = last_message.entity_id
 
-            yield (reducer_key, {
-                'type': feconf.UPDATE_TYPE_FEEDBACK_MESSAGE,
-                'activity_id': last_message.exploration_id,
-                'activity_title': exp_models.ExplorationModel.get_by_id(
-                    last_message.exploration_id).title,
-                'author_id': last_message.author_id,
-                'last_updated_ms': utils.get_time_in_millisecs(
-                    last_message.created_on),
-                'subject': last_message.get_thread_subject(),
-            })
+            yield (
+                reducer_key, {
+                    'type': feconf.UPDATE_TYPE_FEEDBACK_MESSAGE,
+                    'activity_id': exploration_id,
+                    'activity_title': exp_models.ExplorationModel.get_by_id(
+                        exploration_id).title,
+                    'author_id': last_message.author_id,
+                    'last_updated_ms': utils.get_time_in_millisecs(
+                        last_message.created_on),
+                    'subject': feedback_services.get_thread_subject(
+                        last_message.thread_id),
+                })
 
     @staticmethod
     def reduce(key, stringified_values):
@@ -374,7 +373,7 @@ class UserStatsAggregator(jobs.BaseContinuousComputationManager):
                 triggered and the total play count is incremented. If he/she
                 rates an exploration, an event of type `rate` is triggered and
                 average rating of the realtime model is refreshed.
-            *args:
+            *args: list(*).
                 If event_type is 'start', then this is a 1-element list with
                 following entry:
                 - str. The ID of the exploration currently being played.
@@ -388,6 +387,14 @@ class UserStatsAggregator(jobs.BaseContinuousComputationManager):
         exp_id = args[0]
 
         def _refresh_average_ratings(user_id, rating, old_rating):
+            """Refreshes the average ratings in the given realtime layer.
+
+            Args:
+                user_id: str. The id of the user.
+                rating: int. The new rating of the exploration.
+                old_rating: int. The old rating of the exploration before
+                    refreshing.
+            """
             realtime_class = cls._get_realtime_datastore_class()
             realtime_model_id = realtime_class.get_realtime_id(
                 active_realtime_layer, user_id)
@@ -407,13 +414,19 @@ class UserStatsAggregator(jobs.BaseContinuousComputationManager):
                     if old_rating is not None:
                         sum_of_ratings -= old_rating
                         num_ratings -= 1
-                    model.average_ratings = sum_of_ratings/(num_ratings * 1.0)
+                    model.average_ratings = sum_of_ratings / (num_ratings * 1.0)
                 else:
                     model.average_ratings = rating
                 model.num_ratings = num_ratings
                 model.put()
 
         def _increment_total_plays_count(user_id):
+            """Increments the total plays count of the exploration in the
+            realtime layer.
+
+            Args:
+                user_id: str. The id of the user.
+            """
             realtime_class = cls._get_realtime_datastore_class()
             realtime_model_id = realtime_class.get_realtime_id(
                 active_realtime_layer, user_id)
@@ -448,13 +461,14 @@ class UserStatsAggregator(jobs.BaseContinuousComputationManager):
         Args:
             user_id: str. The ID of the user.
 
-        Returns a dict with the following keys:
-            'total_plays': int. Number of times the user's explorations were
-                played.
-            'num_ratings': int. Number of times the explorations have been
-                rated.
-            'average_ratings': float. Average of average ratings across all
-                explorations.
+        Returns:
+            dict. This has the following keys:
+                'total_plays': int. Number of times the user's explorations were
+                    played.
+                'num_ratings': int. Number of times the explorations have been
+                    rated.
+                'average_ratings': float. Average of average ratings across all
+                    explorations.
         """
         total_plays = 0
         num_ratings = 0
@@ -541,7 +555,7 @@ class UserStatsMRJobManager(
         if item.deleted:
             return
 
-        exponent = 2.0/3
+        exponent = 2.0 / 3
 
         # This is set to False only when the exploration impact score is not
         # valid to be calculated.
@@ -599,7 +613,7 @@ class UserStatsMRJobManager(
                         value_per_user * reach * contribution)
                 })
 
-            # if the user is an owner for the exploration, then update dict with
+            # If the user is an owner for the exploration, then update dict with
             # 'average ratings' and 'total plays' as well.
             if contrib_id in exploration_summary.owner_ids:
                 mapped_owner_ids.append(contrib_id)
@@ -654,7 +668,7 @@ class UserStatsMRJobManager(
                     all explorations owned by the user.
         """
         values = [ast.literal_eval(v) for v in stringified_values]
-        exponent = 2.0/3
+        exponent = 2.0 / 3
 
         # Find the final score and round to a whole number.
         user_impact_score = int(round(sum(

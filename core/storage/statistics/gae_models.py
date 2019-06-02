@@ -30,6 +30,39 @@ from google.appengine.ext import ndb
 (base_models,) = models.Registry.import_models([models.NAMES.base_model])
 transaction_services = models.Registry.import_transaction_services()
 
+CURRENT_ACTION_SCHEMA_VERSION = 1
+CURRENT_ISSUE_SCHEMA_VERSION = 1
+
+ACTION_TYPE_EXPLORATION_START = 'ExplorationStart'
+ACTION_TYPE_ANSWER_SUBMIT = 'AnswerSubmit'
+ACTION_TYPE_EXPLORATION_QUIT = 'ExplorationQuit'
+
+ISSUE_TYPE_EARLY_QUIT = 'EarlyQuit'
+ISSUE_TYPE_MULTIPLE_INCORRECT_SUBMISSIONS = 'MultipleIncorrectSubmissions'
+ISSUE_TYPE_CYCLIC_STATE_TRANSITIONS = 'CyclicStateTransitions'
+
+# Types of allowed issues.
+ALLOWED_ISSUE_TYPES = [
+    ISSUE_TYPE_EARLY_QUIT,
+    ISSUE_TYPE_MULTIPLE_INCORRECT_SUBMISSIONS,
+    ISSUE_TYPE_CYCLIC_STATE_TRANSITIONS
+]
+# Types of allowed learner actions.
+ALLOWED_ACTION_TYPES = [
+    ACTION_TYPE_EXPLORATION_START,
+    ACTION_TYPE_ANSWER_SUBMIT,
+    ACTION_TYPE_EXPLORATION_QUIT
+]
+# Mapping from issue type to issue keyname in the issue customization dict. This
+# mapping is useful to uniquely identify issues by the combination of their
+# issue type and other type-specific information (such as the list of states
+# involved).
+ISSUE_TYPE_KEYNAME_MAPPING = {
+    'EarlyQuit': 'state_name',
+    'MultipleIncorrectSubmissions': 'state_name',
+    'CyclicStateTransitions': 'state_names'
+}
+
 
 class StateCounterModel(base_models.BaseModel):
     """A set of counts that correspond to a state.
@@ -83,8 +116,7 @@ class AnswerSubmittedEventLogEntryModel(base_models.BaseModel):
     # Whether the submitted answer received useful feedback.
     is_feedback_useful = ndb.BooleanProperty(indexed=True)
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -98,8 +130,9 @@ class AnswerSubmittedEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               time_spent_in_state_secs, is_feedback_useful):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            time_spent_in_state_secs, is_feedback_useful):
         """Creates a new answer submitted event."""
         entity_id = cls.get_new_event_entity_id(
             exp_id, session_id)
@@ -110,7 +143,8 @@ class AnswerSubmittedEventLogEntryModel(base_models.BaseModel):
             state_name=state_name,
             session_id=session_id,
             time_spent_in_state_secs=time_spent_in_state_secs,
-            is_feedback_useful=is_feedback_useful)
+            is_feedback_useful=is_feedback_useful,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         answer_submitted_event_entity.put()
         return entity_id
 
@@ -129,8 +163,7 @@ class ExplorationActualStartEventLogEntryModel(base_models.BaseModel):
     # ID of current student's session.
     session_id = ndb.StringProperty(indexed=True)
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -153,7 +186,8 @@ class ExplorationActualStartEventLogEntryModel(base_models.BaseModel):
             exp_id=exp_id,
             exp_version=exp_version,
             state_name=state_name,
-            session_id=session_id)
+            session_id=session_id,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         actual_start_event_entity.put()
         return entity_id
 
@@ -171,8 +205,7 @@ class SolutionHitEventLogEntryModel(base_models.BaseModel):
     # Time since start of this state before this event occurred (in sec).
     time_spent_in_state_secs = ndb.FloatProperty()
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -186,8 +219,9 @@ class SolutionHitEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               time_spent_in_state_secs):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            time_spent_in_state_secs):
         """Creates a new solution hit event."""
         entity_id = cls.get_new_event_entity_id(
             exp_id, session_id)
@@ -197,7 +231,8 @@ class SolutionHitEventLogEntryModel(base_models.BaseModel):
             exp_version=exp_version,
             state_name=state_name,
             session_id=session_id,
-            time_spent_in_state_secs=time_spent_in_state_secs)
+            time_spent_in_state_secs=time_spent_in_state_secs,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         solution_hit_event_entity.put()
         return entity_id
 
@@ -240,8 +275,7 @@ class StartExplorationEventLogEntryModel(base_models.BaseModel):
                                    choices=[feconf.PLAY_TYPE_PLAYTEST,
                                             feconf.PLAY_TYPE_NORMAL])
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -262,8 +296,9 @@ class StartExplorationEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               params, play_type, unused_version=1):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            params, play_type, unused_version=1):
         """Creates a new start exploration event and then writes it to
         the datastore.
 
@@ -276,6 +311,9 @@ class StartExplorationEventLogEntryModel(base_models.BaseModel):
                 name to value.
             play_type: str. Type of play-through.
             unused_version: int. Default is 1.
+
+        Returns:
+            str. The ID of the entity.
         """
         # TODO(sll): Some events currently do not have an entity ID that was
         # set using this method; it was randomly set instead due tg an error.
@@ -291,7 +329,8 @@ class StartExplorationEventLogEntryModel(base_models.BaseModel):
             session_id=session_id,
             client_time_spent_in_secs=0.0,
             params=params,
-            play_type=play_type)
+            play_type=play_type,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         start_event_entity.put()
         return entity_id
 
@@ -350,8 +389,7 @@ class MaybeLeaveExplorationEventLogEntryModel(base_models.BaseModel):
                                    choices=[feconf.PLAY_TYPE_PLAYTEST,
                                             feconf.PLAY_TYPE_NORMAL])
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -372,8 +410,9 @@ class MaybeLeaveExplorationEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               client_time_spent_in_secs, params, play_type):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            client_time_spent_in_secs, params, play_type):
         """Creates a new leave exploration event and then writes it
         to the datastore.
 
@@ -382,11 +421,11 @@ class MaybeLeaveExplorationEventLogEntryModel(base_models.BaseModel):
             exp_version: int. Version of exploration.
             state_name: str. Name of current state.
             session_id: str. ID of current student's session.
+            client_time_spent_in_secs: float. Time since start of this
+                state before this event occurred.
             params: dict. Current parameter values, map of parameter name
                 to value.
             play_type: str. Type of play-through.
-            client_time_spent_in_secs: float. Time since start of this
-                state before this event occurred.
         """
         # TODO(sll): Some events currently do not have an entity ID that was
         # set using this method; it was randomly set instead due to an error.
@@ -402,7 +441,8 @@ class MaybeLeaveExplorationEventLogEntryModel(base_models.BaseModel):
             session_id=session_id,
             client_time_spent_in_secs=client_time_spent_in_secs,
             params=params,
-            play_type=play_type)
+            play_type=play_type,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         leave_event_entity.put()
 
 
@@ -454,8 +494,7 @@ class CompleteExplorationEventLogEntryModel(base_models.BaseModel):
                                    choices=[feconf.PLAY_TYPE_PLAYTEST,
                                             feconf.PLAY_TYPE_NORMAL])
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -476,8 +515,9 @@ class CompleteExplorationEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               client_time_spent_in_secs, params, play_type):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            client_time_spent_in_secs, params, play_type):
         """Creates a new exploration completion event and then writes it
         to the datastore.
 
@@ -486,11 +526,14 @@ class CompleteExplorationEventLogEntryModel(base_models.BaseModel):
             exp_version: int. Version of exploration.
             state_name: str. Name of current state.
             session_id: str. ID of current student's session.
+            client_time_spent_in_secs: float. Time since start of this
+                state before this event occurred.
             params: dict. Current parameter values, map of parameter name
                 to value.
             play_type: str. Type of play-through.
-            client_time_spent_in_secs: float. Time since start of this
-                state before this event occurred.
+
+        Returns:
+            str. The ID of the entity.
         """
         entity_id = cls.get_new_event_entity_id(exp_id, session_id)
         complete_event_entity = cls(
@@ -502,7 +545,8 @@ class CompleteExplorationEventLogEntryModel(base_models.BaseModel):
             session_id=session_id,
             client_time_spent_in_secs=client_time_spent_in_secs,
             params=params,
-            play_type=play_type)
+            play_type=play_type,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         complete_event_entity.put()
         return entity_id
 
@@ -527,8 +571,7 @@ class RateExplorationEventLogEntryModel(base_models.BaseModel):
     # user rates an exploration for the first time.
     old_rating = ndb.IntegerProperty(indexed=True)
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, user_id):
@@ -562,11 +605,14 @@ class RateExplorationEventLogEntryModel(base_models.BaseModel):
         """
         entity_id = cls.get_new_event_entity_id(
             exp_id, user_id)
-        cls(id=entity_id,
+        cls(
+            id=entity_id,
             event_type=feconf.EVENT_TYPE_RATE_EXPLORATION,
             exploration_id=exp_id,
             rating=rating,
-            old_rating=old_rating).put()
+            old_rating=old_rating,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION
+        ).put()
 
 
 class StateHitEventLogEntryModel(base_models.BaseModel):
@@ -606,8 +652,7 @@ class StateHitEventLogEntryModel(base_models.BaseModel):
                                    choices=[feconf.PLAY_TYPE_PLAYTEST,
                                             feconf.PLAY_TYPE_NORMAL])
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -642,6 +687,9 @@ class StateHitEventLogEntryModel(base_models.BaseModel):
             params: dict. Current parameter values, map of parameter name
                 to value.
             play_type: str. Type of play-through.
+
+        Returns:
+            str. The ID of the entity.
         """
         # TODO(sll): Some events currently do not have an entity ID that was
         # set using this method; it was randomly set instead due to an error.
@@ -655,7 +703,8 @@ class StateHitEventLogEntryModel(base_models.BaseModel):
             state_name=state_name,
             session_id=session_id,
             params=params,
-            play_type=play_type)
+            play_type=play_type,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         state_event_entity.put()
         return entity_id
 
@@ -673,8 +722,7 @@ class StateCompleteEventLogEntryModel(base_models.BaseModel):
     # Time since start of this state before this event occurred (in sec).
     time_spent_in_state_secs = ndb.FloatProperty()
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -688,8 +736,9 @@ class StateCompleteEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, exp_version, state_name, session_id,
-               time_spent_in_state_secs):
+    def create(
+            cls, exp_id, exp_version, state_name, session_id,
+            time_spent_in_state_secs):
         """Creates a new state complete event."""
         entity_id = cls.get_new_event_entity_id(
             exp_id, session_id)
@@ -699,7 +748,8 @@ class StateCompleteEventLogEntryModel(base_models.BaseModel):
             exp_version=exp_version,
             state_name=state_name,
             session_id=session_id,
-            time_spent_in_state_secs=time_spent_in_state_secs)
+            time_spent_in_state_secs=time_spent_in_state_secs,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         state_finish_event_entity.put()
         return entity_id
 
@@ -719,8 +769,7 @@ class LeaveForRefresherExplorationEventLogEntryModel(base_models.BaseModel):
     # Time since start of this state before this event occurred (in sec).
     time_spent_in_state_secs = ndb.FloatProperty()
     # The version of the event schema used to describe an event of this type.
-    event_schema_version = ndb.IntegerProperty(
-        indexed=True, default=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
+    event_schema_version = ndb.IntegerProperty(indexed=True)
 
     @classmethod
     def get_new_event_entity_id(cls, exp_id, session_id):
@@ -734,8 +783,9 @@ class LeaveForRefresherExplorationEventLogEntryModel(base_models.BaseModel):
             session_id))
 
     @classmethod
-    def create(cls, exp_id, refresher_exp_id, exp_version, state_name,
-               session_id, time_spent_in_state_secs):
+    def create(
+            cls, exp_id, refresher_exp_id, exp_version, state_name,
+            session_id, time_spent_in_state_secs):
         """Creates a new leave for refresher exploration event."""
         entity_id = cls.get_new_event_entity_id(
             exp_id, session_id)
@@ -746,7 +796,8 @@ class LeaveForRefresherExplorationEventLogEntryModel(base_models.BaseModel):
             exp_version=exp_version,
             state_name=state_name,
             session_id=session_id,
-            time_spent_in_state_secs=time_spent_in_state_secs)
+            time_spent_in_state_secs=time_spent_in_state_secs,
+            event_schema_version=feconf.CURRENT_EVENT_MODELS_SCHEMA_VERSION)
         leave_for_refresher_exp_entity.put()
         return entity_id
 
@@ -927,6 +978,162 @@ class ExplorationStatsModel(base_models.BaseModel):
         cls.put_multi(exploration_stats_models)
 
 
+class ExplorationIssuesModel(base_models.BaseModel):
+    """Model for storing the list of playthroughs for an exploration grouped by
+    issues.
+    """
+    # ID of exploration.
+    exp_id = ndb.StringProperty(indexed=True, required=True)
+    # Version of exploration.
+    exp_version = ndb.IntegerProperty(indexed=True, required=True)
+    # The unresolved issues for this exploration. This will be a list of dicts
+    # where each dict represents an issue along with the associated
+    # playthroughs.
+    unresolved_issues = ndb.JsonProperty(repeated=True)
+
+    @classmethod
+    def get_entity_id(cls, exp_id, exp_version):
+        """Generates an ID for the instance of the form
+        {{exp_id}}.{{exp_version}}.
+
+        Args:
+            exp_id: str. ID of the exploration.
+            exp_version: int. Version of the exploration.
+
+        Returns:
+            str. ID of the new ExplorationIssuesModel instance.
+        """
+        return '%s.%s' % (exp_id, exp_version)
+
+    @classmethod
+    def get_model(cls, exp_id, exp_version):
+        """Retrieves ExplorationIssuesModel given exploration ID and version.
+
+        Args:
+            exp_id: str. ID of the exploration.
+            exp_version: int. Version of the exploration.
+
+        Returns:
+            ExplorationISsuesModel. Exploration issues model instance in
+                datastore.
+        """
+        instance_id = cls.get_entity_id(exp_id, exp_version)
+        exp_issues_model = cls.get(instance_id, strict=False)
+        return exp_issues_model
+
+    @classmethod
+    def create(cls, exp_id, exp_version, unresolved_issues):
+        """Creates an ExplorationIssuesModel instance and writes it to the
+        datastore.
+
+        Args:
+            exp_id: str. ID of the exploration.
+            exp_version: int. Version of the exploration.
+            unresolved_issues: list(dict). The unresolved issues for this
+                exploration. This will be a list of dicts where each dict
+                represents an issue along with the associated playthroughs.
+
+        Returns:
+            str. ID of the new ExplorationIssuesModel instance.
+        """
+        instance_id = cls.get_entity_id(exp_id, exp_version)
+        exp_issues_instance = cls(
+            id=instance_id, exp_id=exp_id, exp_version=exp_version,
+            unresolved_issues=unresolved_issues)
+        exp_issues_instance.put()
+        return instance_id
+
+
+class PlaythroughModel(base_models.BaseModel):
+    """Model for storing recorded useful playthrough data in the datastore.
+
+    The ID of instances of this class are of the form
+    {{exp_id}}.{{random_hash_of_16_chars}}
+    """
+    # ID of the exploration.
+    exp_id = ndb.StringProperty(indexed=True, required=True)
+    # Version of the exploration.
+    exp_version = ndb.IntegerProperty(indexed=True, required=True)
+    # Type of the issue.
+    issue_type = ndb.StringProperty(
+        indexed=True, required=True, choices=ALLOWED_ISSUE_TYPES)
+    # The customization args dict for the given issue_type.
+    issue_customization_args = ndb.JsonProperty(required=True)
+    # The playthrough actions for this playthrough. This will be a list of dicts
+    # where each dict represents a single playthrough action. The list is
+    # ordered by the time of occurence of the action.
+    actions = ndb.JsonProperty(repeated=True)
+
+    @classmethod
+    def _generate_id(cls, exp_id):
+        """Generates a unique id for the playthrough of the form
+        {{exp_id}}.{{random_hash_of_16_chars}}
+
+        Args:
+            exp_id: str. ID of the exploration.
+
+        Returns:
+            ID of the new PlaythroughModel instance.
+
+        Raises:
+            Exception: The id generator for PlaythroughModel is producing too
+                many collisions.
+        """
+
+        for _ in xrange(base_models.MAX_RETRIES):
+            new_id = '%s.%s' % (
+                exp_id,
+                utils.convert_to_hash(
+                    str(utils.get_random_int(base_models.RAND_RANGE)),
+                    base_models.ID_LENGTH))
+            if not cls.get_by_id(new_id):
+                return new_id
+
+        raise Exception(
+            'The id generator for PlaythroughModel is producing too many '
+            'collisions.')
+
+    @classmethod
+    def create(
+            cls, exp_id, exp_version, issue_type, issue_customization_args,
+            actions):
+        """Creates a PlaythroughModel instance and writes it to the
+        datastore.
+
+        Args:
+            exp_id: str. ID of the exploration.
+            exp_version: int. Version of the exploration.
+            issue_type: str. Type of the issue.
+            issue_customization_args: dict. The customization args dict for the
+                given issue_type.
+            actions: list(dict). The playthrough actions for this playthrough.
+                This will be a list of dicts where each dict represents a single
+                playthrough action. The list is ordered by the time of occurence
+                of the action.
+
+        Returns:
+            str. ID of the new PlaythroughModel instance.
+        """
+        instance_id = cls._generate_id(exp_id)
+        playthrough_instance = cls(
+            id=instance_id, exp_id=exp_id, exp_version=exp_version,
+            issue_type=issue_type,
+            issue_customization_args=issue_customization_args,
+            actions=actions)
+        playthrough_instance.put()
+        return instance_id
+
+    @classmethod
+    def delete_playthroughs_multi(cls, playthrough_ids):
+        """Deltes multiple playthrough instances.
+
+        Args:
+            playthrough_ids: list(str). List of playthrough IDs to be deleted.
+        """
+        instances = cls.get_multi(playthrough_ids)
+        cls.delete_multi(instances)
+
+
 class ExplorationAnnotationsModel(base_models.BaseMapReduceBatchResultsModel):
     """Batch model for storing MapReduce calculation output for
     exploration-level statistics.
@@ -952,7 +1159,7 @@ class ExplorationAnnotationsModel(base_models.BaseMapReduceBatchResultsModel):
         """Gets entity_id for a batch model based on given exploration state.
 
         Args:
-            exp_id: str. ID of the exploration currently being played.
+            exploration_id: str. ID of the exploration currently being played.
             exploration_version: int. Version of the exploration currently
                 being played.
 
@@ -992,7 +1199,7 @@ class ExplorationAnnotationsModel(base_models.BaseMapReduceBatchResultsModel):
         ExplorationAnnotationsModel for a specific exploration_id.
 
         Args:
-            exp_id: str. ID of the exploration currently being played.
+            exploration_id: str. ID of the exploration currently being played.
 
         Returns:
             list(int). List of versions corresponding to annotation models
@@ -1048,6 +1255,10 @@ class StateAnswersModel(base_models.BaseModel):
 
     # List of answer dicts, each of which is stored as JSON blob. The content
     # of answer dicts is specified in core.domain.stats_domain.StateAnswers.
+    # NOTE: The answers stored in submitted_answers_list must be sorted
+    # according to the chronological order of their submission otherwise
+    # TopNUnresolvedAnswersByFrequency calculation in
+    # InteractionAnswerSummariesAggregator will output invalid results.
     submitted_answer_list = ndb.JsonProperty(repeated=True, indexed=False)
     # The version of the submitted_answer_list currently supported by Oppia. If
     # the internal JSON structure of submitted_answer_list changes,
@@ -1141,6 +1352,11 @@ class StateAnswersModel(base_models.BaseModel):
         """See the insert_submitted_answers for general documentation of what
         this method does. It's only safe to call this method from within a
         transaction.
+
+        NOTE: The answers stored in submitted_answers_list must be sorted
+        according to the chronological order of their submission otherwise
+        TopNUnresolvedAnswersByFrequency calculation in
+        InteractionAnswerSummariesAggregator will output invalid results.
 
         Args:
             exploration_id: str. ID of the exploration currently being played.
@@ -1380,7 +1596,7 @@ class StateAnswersCalcOutputModel(base_models.BaseMapReduceBatchResultsModel):
             exploration_id, exploration_version, state_name, calculation_id)
         instance = cls.get(instance_id, strict=False)
         if not instance:
-            # create new instance.
+            # Create new instance.
             instance = cls(
                 id=instance_id, exploration_id=exploration_id,
                 exploration_version=exploration_version,
@@ -1402,8 +1618,9 @@ class StateAnswersCalcOutputModel(base_models.BaseMapReduceBatchResultsModel):
                     state_name.encode('utf-8'), calculation_id))
 
     @classmethod
-    def get_model(cls, exploration_id, exploration_version, state_name,
-                  calculation_id):
+    def get_model(
+            cls, exploration_id, exploration_version, state_name,
+            calculation_id):
         """Gets entity instance corresponding to the given exploration state.
 
         Args:
@@ -1423,8 +1640,9 @@ class StateAnswersCalcOutputModel(base_models.BaseMapReduceBatchResultsModel):
         return instance
 
     @classmethod
-    def _get_entity_id(cls, exploration_id, exploration_version, state_name,
-                       calculation_id):
+    def _get_entity_id(
+            cls, exploration_id, exploration_version, state_name,
+            calculation_id):
         """Returns entity_id corresponding to the given exploration state.
 
         Args:

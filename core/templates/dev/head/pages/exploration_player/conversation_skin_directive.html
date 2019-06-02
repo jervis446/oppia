@@ -3,20 +3,22 @@
   height for the card content transition animation.
 -->
 <div class="conversation-skin-future-tutor-card" aria-hidden="true">
-  <div class="conversation-skin-tutor-card-content">
-    <div class="conversation-skin-tutor-card-top-section">
-      <div class="rte-viewer conversation-skin-tutor-card-top-content"
-           angular-html-bind="upcomingContentHtml">
-      </div>
+  <div class="oppia-learner-view-card-content">
+    <div class="oppia-learner-view-card-top-section">
+      <angular-html-bind class="oppia-rte-viewer oppia-learner-view-card-top-content"
+                         html-data="nextCard.getContentHtml()">
+      </angular-html-bind>
     </div>
 
-    <div ng-if="upcomingInlineInteractionHtml"
-         class="conversation-skin-inline-interaction"
-         angular-html-bind="upcomingInlineInteractionHtml">
+    <div>
+      <angular-html-bind ng-if="upcomingInlineInteractionHtml"
+                         class="conversation-skin-inline-interaction"
+                         html-data="upcomingInlineInteractionHtml">
+      </angular-html-bind>
     </div>
 
     <div ng-if="!upcomingInlineInteractionHtml"
-        class="conversation-skin-inline-interaction">
+         class="conversation-skin-inline-interaction">
       <div style="padding: 6px 12px;">
         <[upcomingInteractionInstructions]>
         <i ng-if="canWindowShowTwoCards()" class="material-icons md-18" style="position: relative;">&#xE5C8;</i>
@@ -35,20 +37,20 @@
                       !canWindowShowTwoCards() && isCurrentSupplementalCardNonempty(),
                     'conversation-skin-tutor-card-alone':
                       !canWindowShowTwoCards() && !isCurrentSupplementalCardNonempty()}">
-      <tutor-card on-submit-answer="submitAnswer(answer, rulesService)"
+      <tutor-card displayed-card="displayedCard"
                   is-learn-again-button="isLearnAgainButton()"
-                  start-card-change-animation="startCardChangeAnimation"
-                  on-change-interaction-answer-validity="setInteractionAnswerValidity(answerValidity)">
+                  start-card-change-animation="startCardChangeAnimation">
       </tutor-card>
       <div ng-if="isCurrentSupplementalCardNonempty() && !canWindowShowTwoCards()">
         <supplemental-card on-click-continue-button="showUpcomingCard()"
-                           is-learn-again-button="isLearnAgainButton()"
-                           on-submit-answer="submitAnswer(answer, rulesService)">
+                           displayed-card="displayedCard"
+                           is-learn-again-button="isLearnAgainButton()">
         </supplemental-card>
       </div>
       <progress-nav on-submit="submitAnswerFromProgressNav()"
                     is-learn-again-button="isLearnAgainButton()"
-                    submit-button-is-disabled="!interactionAnswerIsValid"
+                    submit-button-is-disabled="isSubmitButtonDisabled()"
+                    displayed-card="displayedCard"
                     submit-button-is-shown="!answerIsBeingProcessed"
                     on-click-continue-button="showUpcomingCard()">
       </progress-nav>
@@ -57,19 +59,19 @@
     <div ng-if="isCurrentSupplementalCardNonempty() && canWindowShowTwoCards()"
          class="conversation-skin-supplemental-card-container">
       <supplemental-card on-click-continue-button="showUpcomingCard()"
-                         is-learn-again-button="isLearnAgainButton()"
-                         on-submit-answer="submitAnswer(answer, rulesService)">
+                         displayed-card="displayedCard"
+                         is-learn-again-button="isLearnAgainButton()">
       </supplemental-card>
       <div class="conversation-skin-supplemental-nav" ng-if="isSupplementalNavShown()">
-        <md-button type="submit" class="oppia-learner-confirm-button conversation-skin-supplemental-nav-submit-button"
+        <md-button type="submit" class="oppia-learner-confirm-button protractor-test-submit-answer-button conversation-skin-supplemental-nav-submit-button"
                    ng-click="submitAnswerFromProgressNav()"
-                   ng-disabled="!interactionAnswerIsValid"
+                   ng-disabled="isSubmitButtonDisabled()"
                    translate="I18N_INTERACTIONS_SUBMIT">
         </md-button>
       </div>
     </div>
   </div>
-  <div class="conversation-skin-correctness-footer-container" ng-if="isCorrectnessFooterEnabled() && isOnLastCard()">
+  <div class="conversation-skin-correctness-footer-container" ng-if="isCorrectnessFooterEnabled()">
     <correctness-footer></correctness-footer>
   </div>
 </div>
@@ -79,7 +81,7 @@
   <div ng-if="isLoggedIn && !isInPreviewMode" class="conversation-skin-final-ratings">
     <div class="conversation-skin-final-ratings-header" translate="I18N_PLAYER_RATE_EXPLORATION">
     </div>
-    <div popover-placement="bottom" uib-popover-template="'popover/feedback'" popover-trigger="click">
+    <div popover-placement="bottom" uib-popover-template="'<[getFeedbackPopoverUrl()]>'" popover-trigger="click">
       <rating-display rating-value="userRating" is-editable="true" on-edit="submitUserRating"
                       class="conversation-skin-final-ratings-display">
       </rating-display>
@@ -206,7 +208,7 @@ otherwise they will interfere with the iframed conversation skin directive.
 
   .conversation-skin-tutor-card-container {
     flex-shrink: 10000;
-    max-width: 560px;
+    max-width: 650px;
     /* NOTE TO DEVELOPERS: If min-width is changed, max-width in media query
        below should be changed to match. */
     min-width: 360px;
@@ -238,53 +240,23 @@ otherwise they will interfere with the iframed conversation skin directive.
     z-index: 2;
   }
 
-  /* These rules must be kept in sync with corresponding rules in oppia.css
-     (those with '.oppia-rte-editor > p,
-       .form-control.oppia-rte-content > div > p' selectors specifying
-      the same line-height, margin-top and margin-bottom attributes)
-  */
-  .rte-viewer > p {
-    line-height: 28px;
-    margin-bottom: 18px;
-    margin-top: 18px;
-  }
-  .rte-viewer > p:first-child {
-    margin-top: 0px;
-  }
-  .rte-viewer > p:last-child {
-    margin-bottom: 0px;
-  }
-
-  .rte-viewer {
-    border-radius: 2px;
-    display: inline-block;
-    max-width: 100%;
-    position: relative;
-    text-align: left;
-  }
-
-  .conversation-skin-tutor-card-top-content,
   .conversation-skin-oppia-feedback-content,
   .conversation-skin-learner-answer-content {
     margin-bottom: 12px;
+    padding: 8px 12px;
+    overflow: auto;
+    word-wrap: break-word;
   }
 
 
-  .conversation-skin-tutor-card-top-content,
   .conversation-skin-help-card-content {
     padding: 12px;
   }
 
   .conversation-skin-oppia-feedback-content,
-  .conversation-skin-learner-answer-content {
-    padding: 8px 12px;
-    word-wrap: break-word;
-  }
-
-  .conversation-skin-tutor-card-top-content,
-  .conversation-skin-oppia-feedback-content,
   .conversation-skin-help-card-content {
     background-color: rgba(224,242,241,1);
+    border-top-left-radius: 0;
   }
 
   .conversation-skin-learner-answer-content {
@@ -292,10 +264,14 @@ otherwise they will interfere with the iframed conversation skin directive.
     border-bottom-right-radius: 0;
   }
 
-  .conversation-skin-tutor-card-top-content,
-  .conversation-skin-oppia-feedback-content,
-  .conversation-skin-help-card-content {
-    border-top-left-radius: 0;
+
+  /*
+      This CSS block is for ensuring that only a response from a multi-line text input preserves newlines.
+      Leveraging the parent class ".conversation-skin-learner-answer-content" will render newlines in the
+      other interactions (ie; Multiple Choice, Item Selection) which is not necessary.
+  */
+  oppia-response-text-input {
+    white-space: pre-wrap;
   }
 
   .conversation-skin-feedback-dot-one,
@@ -308,32 +284,32 @@ otherwise they will interfere with the iframed conversation skin directive.
   }
 
   .conversation-skin-feedback-dot-one {
-    -moz-animation-delay: 0.0s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.0s;
+    -moz-animation-delay: 0.0s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.0s;
+    -webkit-animation-delay: 0.0s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.0s;
     opacity: 0;
   }
 
   .conversation-skin-feedback-dot-two {
-    -moz-animation-delay: 0.2s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.2s;
+    -moz-animation-delay: 0.2s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.2s;
+    -webkit-animation-delay: 0.2s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.2s;
     opacity: 0;
   }
 
   .conversation-skin-feedback-dot-three {
-    -moz-animation-delay: 0.4s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.4s;
+    -moz-animation-delay: 0.4s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.4s;
+    -webkit-animation-delay: 0.4s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.4s;
     opacity: 0;
   }
 
@@ -433,7 +409,6 @@ otherwise they will interfere with the iframed conversation skin directive.
       height: 40px;
       left: 100%;
       position: absolute;
-      position: absolute;
       transform: translate(-100%, -100%);
       width: 40px;
       z-index: 16;
@@ -442,8 +417,10 @@ otherwise they will interfere with the iframed conversation skin directive.
       opacity: 0.8;
     }
 
-    .conversation-skin-tutor-card {
-      padding-left: 0px;
+    .oppia-learner-view-card {
+      padding-bottom: 0;
+      padding-left: 0;
+      margin-left: 0;
     }
   }
 </style>

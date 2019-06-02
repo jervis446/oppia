@@ -32,25 +32,31 @@ class Registry(object):
 
     @classmethod
     def _refresh_registry(cls):
+        """Clears and adds new visualization instances to the registry."""
         cls.visualizations_dict.clear()
 
         # Add new visualization instances to the registry.
-        for name, clazz in inspect.getmembers(models, inspect.isclass):
+        for name, clazz in inspect.getmembers(
+                models, predicate=inspect.isclass):
             if name.endswith('_test') or name == 'BaseVisualization':
                 continue
 
             ancestor_names = [
                 base_class.__name__ for base_class in inspect.getmro(clazz)]
-            if 'BaseVisualization' not in ancestor_names:
-                continue
-
-            cls.visualizations_dict[clazz.__name__] = clazz
+            if 'BaseVisualization' in ancestor_names:
+                cls.visualizations_dict[clazz.__name__] = clazz
 
     @classmethod
     def get_full_html(cls):
         """Returns the HTML bodies for all visualizations."""
-        js_directives = utils.get_file_contents(os.path.join(
-            feconf.VISUALIZATIONS_DIR, 'visualizations.js'))
+        js_directives = ''
+        for visualization_class in cls.get_all_visualization_ids():
+            filename = (
+                'OppiaVisualization%sDirective.js' % (visualization_class))
+            js_directives += (
+                utils.get_file_contents(os.path.join(
+                    feconf.VISUALIZATIONS_DIR_FOR_JS, filename)))
+
         return '<script>%s</script>\n' % (js_directives)
 
     @classmethod

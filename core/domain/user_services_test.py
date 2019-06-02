@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Unit tests for core.domain.user_services."""
+
 import datetime
 import logging
 import os
@@ -21,16 +23,38 @@ import os
 from constants import constants
 from core.domain import collection_services
 from core.domain import event_services
+from core.domain import exp_domain
 from core.domain import exp_services
 from core.domain import rights_manager
 from core.domain import user_jobs_continuous
-from core.domain import user_jobs_continuous_test
 from core.domain import user_services
 from core.tests import test_utils
 import feconf
 import utils
 
 from google.appengine.api import urlfetch
+
+
+class MockUserStatsAggregator(
+        user_jobs_continuous.UserStatsAggregator):
+    """A modified UserStatsAggregator that does not start a new
+     batch job when the previous one has finished.
+    """
+    @classmethod
+    def _get_batch_job_manager_class(cls):
+        return MockUserStatsMRJobManager
+
+    @classmethod
+    def _kickoff_batch_job_after_previous_one_ends(cls):
+        pass
+
+
+class MockUserStatsMRJobManager(
+        user_jobs_continuous.UserStatsMRJobManager):
+
+    @classmethod
+    def _get_continuous_computation_class(cls):
+        return MockUserStatsAggregator
 
 
 class UserServicesUnitTests(test_utils.GenericTestBase):
@@ -45,7 +69,7 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
         user_services.create_new_user(user_id, 'user@example.com')
 
         user_services.set_username(user_id, username)
-        self.assertEquals(username, user_services.get_username(user_id))
+        self.assertEqual(username, user_services.get_username(user_id))
 
     def test_get_username_for_system_user(self):
         self.assertEqual(
@@ -82,7 +106,7 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
     def test_get_username_none(self):
         user_services.create_new_user('fakeUser', 'user@example.com')
-        self.assertEquals(None, user_services.get_username('fakeUser'))
+        self.assertEqual(None, user_services.get_username('fakeUser'))
 
     def test_is_username_taken_false(self):
         self.assertFalse(user_services.is_username_taken('fakeUsername'))
@@ -136,14 +160,14 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
         user_services.create_new_user(user_id, user_email)
         user_services.set_username(user_id, username)
-        self.assertEquals(user_services.get_username(user_id), username)
+        self.assertEqual(user_services.get_username(user_id), username)
 
         # Handle usernames that exist.
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_email_from_username(username), user_email)
 
         # Handle usernames in the same equivalence class correctly.
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_email_from_username('USERNAME'), user_email)
 
         # Return None for usernames which don't exist.
@@ -157,14 +181,14 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
         user_services.create_new_user(user_id, user_email)
         user_services.set_username(user_id, username)
-        self.assertEquals(user_services.get_username(user_id), username)
+        self.assertEqual(user_services.get_username(user_id), username)
 
         # Handle usernames that exist.
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_user_id_from_username(username), user_id)
 
         # Handle usernames in the same equivalence class correctly.
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_user_id_from_username('USERNAME'), user_id)
 
         # Return None for usernames which don't exist.
@@ -186,14 +210,15 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
     def test_fetch_gravatar_failure_404(self):
         user_email = 'user@example.com'
+
         error_messages = []
-        def log_mock(message):
+        def mock_log_function(message):
             error_messages.append(message)
 
         gravatar_url = user_services.get_gravatar_url(user_email)
         expected_error_message = (
             '[Status 404] Failed to fetch Gravatar from %s' % gravatar_url)
-        logging_error_mock = test_utils.CallCounter(log_mock)
+        logging_error_mock = test_utils.CallCounter(mock_log_function)
         urlfetch_counter = test_utils.CallCounter(urlfetch.fetch)
         urlfetch_mock_ctx = self.urlfetch_mock(status_code=404)
         log_swap_ctx = self.swap(logging, 'error', logging_error_mock)
@@ -208,14 +233,15 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
     def test_fetch_gravatar_failure_exception(self):
         user_email = 'user@example.com'
+
         error_messages = []
-        def log_mock(message):
+        def mock_log_function(message):
             error_messages.append(message)
 
         gravatar_url = user_services.get_gravatar_url(user_email)
         expected_error_message = (
             'Failed to fetch Gravatar from %s' % gravatar_url)
-        logging_error_mock = test_utils.CallCounter(log_mock)
+        logging_error_mock = test_utils.CallCounter(mock_log_function)
         urlfetch_fail_mock = test_utils.FailingFunction(
             urlfetch.fetch, urlfetch.InvalidURLError,
             test_utils.FailingFunction.INFINITY)
@@ -248,12 +274,12 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
         # When UserEmailPreferencesModel is yet to be created,
         # the value returned by get_email_preferences() should be True.
         email_preferences = user_services.get_email_preferences(user_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.can_receive_editor_role_email,
             feconf.DEFAULT_EDITOR_ROLE_EMAIL_PREFERENCE)
 
         email_preferences = user_services.get_email_preferences(user_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.can_receive_feedback_message_email,
             feconf.DEFAULT_FEEDBACK_MESSAGE_EMAIL_PREFERENCE)
 
@@ -266,10 +292,10 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
             feconf.DEFAULT_SUBSCRIPTION_EMAIL_PREFERENCE)
 
         email_preferences = user_services.get_email_preferences(user_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.can_receive_editor_role_email,
             feconf.DEFAULT_EDITOR_ROLE_EMAIL_PREFERENCE)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.can_receive_feedback_message_email,
             feconf.DEFAULT_FEEDBACK_MESSAGE_EMAIL_PREFERENCE)
 
@@ -302,10 +328,10 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
         self.assertIsNone(exploration_user_model)
         email_preferences = user_services.get_email_preferences_for_exploration(
             user_id, exploration_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.mute_feedback_notifications,
             feconf.DEFAULT_FEEDBACK_NOTIFICATIONS_MUTED_PREFERENCE)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.mute_suggestion_notifications,
             feconf.DEFAULT_SUGGESTION_NOTIFICATIONS_MUTED_PREFERENCE)
 
@@ -313,15 +339,17 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
         # the default mute values.
         user_services.set_email_preferences_for_exploration(
             user_id, exploration_id,
-            feconf.DEFAULT_FEEDBACK_NOTIFICATIONS_MUTED_PREFERENCE,
-            feconf.DEFAULT_SUGGESTION_NOTIFICATIONS_MUTED_PREFERENCE)
+            mute_feedback_notifications=(
+                feconf.DEFAULT_FEEDBACK_NOTIFICATIONS_MUTED_PREFERENCE),
+            mute_suggestion_notifications=(
+                feconf.DEFAULT_SUGGESTION_NOTIFICATIONS_MUTED_PREFERENCE))
 
         email_preferences = user_services.get_email_preferences_for_exploration(
             user_id, exploration_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.mute_feedback_notifications,
             feconf.DEFAULT_FEEDBACK_NOTIFICATIONS_MUTED_PREFERENCE)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.mute_suggestion_notifications,
             feconf.DEFAULT_SUGGESTION_NOTIFICATIONS_MUTED_PREFERENCE)
 
@@ -332,7 +360,7 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
 
         email_preferences = user_services.get_email_preferences_for_exploration(
             user_id, exploration_id)
-        self.assertEquals(
+        self.assertEqual(
             email_preferences.mute_feedback_notifications,
             feconf.DEFAULT_FEEDBACK_NOTIFICATIONS_MUTED_PREFERENCE)
         self.assertTrue(email_preferences.mute_suggestion_notifications)
@@ -481,6 +509,20 @@ class UserServicesUnitTests(test_utils.GenericTestBase):
         with self.assertRaises(ValueError):
             user_services.parse_date_from_string(test_datetime_strings[3])
 
+    def test_record_user_started_state_translation_tutorial(self):
+        # Testing of the user translation tutorial firsttime state storage.
+        user_id = 'someUser'
+        username = 'username'
+        user_services.create_new_user(user_id, 'user@example.com')
+        user_services.set_username(user_id, username)
+        user_services.record_user_started_state_translation_tutorial(user_id)
+        user_settings = user_services.get_user_settings(user_id)
+        self.assertIsInstance(
+            user_settings.last_started_state_translation_tutorial,
+            datetime.datetime)
+        self.assertTrue(
+            user_settings.last_started_state_translation_tutorial is not None)
+
 
 class UpdateContributionMsecTests(test_utils.GenericTestBase):
     """Test whether contribution date changes with publication of
@@ -526,12 +568,12 @@ class UpdateContributionMsecTests(test_utils.GenericTestBase):
             self.admin, self.EXP_ID)
 
         exp_services.update_exploration(
-            self.editor_id, self.EXP_ID, [{
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
                 'cmd': 'edit_state_property',
                 'state_name': init_state_name,
                 'property_name': 'widget_id',
                 'new_value': 'MultipleChoiceInput'
-            }], 'commit')
+            })], 'commit')
 
         self.assertIsNotNone(user_services.get_user_settings(
             self.editor_id).first_contribution_msec)
@@ -549,12 +591,12 @@ class UpdateContributionMsecTests(test_utils.GenericTestBase):
         # Test that commit to unpublished exploration does not update
         # contribution time.
         exp_services.update_exploration(
-            self.admin_id, self.EXP_ID, [{
+            self.admin_id, self.EXP_ID, [exp_domain.ExplorationChange({
                 'cmd': 'edit_state_property',
                 'state_name': init_state_name,
                 'property_name': 'widget_id',
                 'new_value': 'MultipleChoiceInput'
-            }], '')
+            })], '')
         self.assertIsNone(user_services.get_user_settings(
             self.admin_id).first_contribution_msec)
 
@@ -563,11 +605,11 @@ class UpdateContributionMsecTests(test_utils.GenericTestBase):
         rights_manager.assign_role_for_exploration(
             self.admin, self.EXP_ID, self.editor_id, 'editor')
         exp_services.update_exploration(
-            self.editor_id, self.EXP_ID, [{
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
                 'cmd': 'rename_state',
                 'old_state_name': feconf.DEFAULT_INIT_STATE_NAME,
                 'new_state_name': u'¡Hola! αβγ',
-            }], '')
+            })], '')
         self.assertIsNone(user_services.get_user_settings(
             self.editor_id).first_contribution_msec)
 
@@ -739,7 +781,7 @@ class UserDashboardStatsTests(test_utils.GenericTestBase):
         self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
         self.owner_id = self.get_user_id_from_email(self.OWNER_EMAIL)
 
-    def _mock_get_current_date_as_string(self):
+    def mock_get_current_date_as_string(self):
         return self.CURRENT_DATE_AS_STRING
 
     def test_get_user_dashboard_stats(self):
@@ -749,13 +791,14 @@ class UserDashboardStatsTests(test_utils.GenericTestBase):
         event_services.StartExplorationEventHandler.record(
             self.EXP_ID, 1, init_state_name, self.USER_SESSION_ID, {},
             feconf.PLAY_TYPE_NORMAL)
-        event_services.StatsEventsHandler.record(self.EXP_ID, 1, {
-            'num_starts': 1,
-            'num_actual_starts': 0,
-            'num_completions': 0,
-            'state_stats_mapping': {}
-        })
-        self.assertEquals(
+        event_services.StatsEventsHandler.record(
+            self.EXP_ID, 1, {
+                'num_starts': 1,
+                'num_actual_starts': 0,
+                'num_completions': 0,
+                'state_stats_mapping': {}
+            })
+        self.assertEqual(
             user_jobs_continuous.UserStatsAggregator.get_dashboard_stats(
                 self.owner_id),
             {
@@ -763,10 +806,9 @@ class UserDashboardStatsTests(test_utils.GenericTestBase):
                 'num_ratings': 0,
                 'average_ratings': None
             })
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator
-         .start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
-        self.assertEquals(
+        self.assertEqual(
             user_jobs_continuous.UserStatsAggregator.get_dashboard_stats(
                 self.owner_id),
             {
@@ -782,17 +824,17 @@ class UserDashboardStatsTests(test_utils.GenericTestBase):
         event_services.StartExplorationEventHandler.record(
             self.EXP_ID, 1, init_state_name, self.USER_SESSION_ID, {},
             feconf.PLAY_TYPE_NORMAL)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_weekly_dashboard_stats(self.owner_id), None)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id), None)
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services, 'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             user_services.update_dashboard_stats_log(self.owner_id)
 
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_weekly_dashboard_stats(self.owner_id), [{
                 self.CURRENT_DATE_AS_STRING: {
                     'total_plays': 0,
@@ -808,33 +850,33 @@ class UserDashboardStatsTests(test_utils.GenericTestBase):
         event_services.StartExplorationEventHandler.record(
             self.EXP_ID, 1, init_state_name, self.USER_SESSION_ID, {},
             feconf.PLAY_TYPE_NORMAL)
-        event_services.StatsEventsHandler.record(self.EXP_ID, 1, {
-            'num_starts': 1,
-            'num_actual_starts': 0,
-            'num_completions': 0,
-            'state_stats_mapping': {}
-        })
+        event_services.StatsEventsHandler.record(
+            self.EXP_ID, 1, {
+                'num_starts': 1,
+                'num_actual_starts': 0,
+                'num_completions': 0,
+                'state_stats_mapping': {}
+            })
 
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_weekly_dashboard_stats(self.owner_id), None)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id), None)
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator
-         .start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_weekly_dashboard_stats(self.owner_id), None)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id), None)
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services, 'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             user_services.update_dashboard_stats_log(self.owner_id)
 
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_weekly_dashboard_stats(self.owner_id), [{
                 self.CURRENT_DATE_AS_STRING: {
                     'total_plays': 1,
@@ -895,11 +937,14 @@ class SubjectInterestsUnitTests(test_utils.GenericTestBase):
             self.user_id, ['singleword', 'has spaces'])
 
 
-class LastLoginIntegrationTest(test_utils.GenericTestBase):
+class LastLoginIntegrationTests(test_utils.GenericTestBase):
+    """Integration tests for testing that the last login time for a user updates
+    correctly.
+    """
 
     def setUp(self):
         """Create exploration with two versions."""
-        super(LastLoginIntegrationTest, self).setUp()
+        super(LastLoginIntegrationTests, self).setUp()
         self.signup(self.VIEWER_EMAIL, self.VIEWER_USERNAME)
         self.viewer_id = self.get_user_id_from_email(self.VIEWER_EMAIL)
 
@@ -917,7 +962,7 @@ class LastLoginIntegrationTest(test_utils.GenericTestBase):
         # After logging in and requesting a URL, the last_logged_in property is
         # set.
         self.login(self.VIEWER_EMAIL)
-        self.testapp.get(feconf.LIBRARY_INDEX_URL)
+        self.get_html_response(feconf.LIBRARY_INDEX_URL)
         self.assertIsNotNone(
             user_services.get_user_settings(self.viewer_id).last_logged_in)
         self.logout()
@@ -935,34 +980,40 @@ class LastLoginIntegrationTest(test_utils.GenericTestBase):
         # Without explicitly defining the type of the patched datetimes, NDB
         # validation checks for datetime.datetime instances fail.
         class PatchedDatetimeType(type):
+            """Validates the datetime instances."""
             def __instancecheck__(cls, other):
+                """Validates whether the given instance is a datatime
+                instance.
+                """
                 return isinstance(other, original_datetime_type)
 
-        class PatchedDatetime11Hours(datetime.datetime):
+        class MockDatetime11Hours(datetime.datetime):
             __metaclass__ = PatchedDatetimeType
 
             @classmethod
             def utcnow(cls):
+                """Returns the current date and time 11 hours ahead of UTC."""
                 return current_datetime + datetime.timedelta(hours=11)
 
-        class PatchedDatetime13Hours(datetime.datetime):
+        class MockDatetime13Hours(datetime.datetime):
             __metaclass__ = PatchedDatetimeType
 
             @classmethod
             def utcnow(cls):
+                """Returns the current date and time 13 hours ahead of UTC."""
                 return current_datetime + datetime.timedelta(hours=13)
 
-        with self.swap(datetime, 'datetime', PatchedDatetime11Hours):
+        with self.swap(datetime, 'datetime', MockDatetime11Hours):
             self.login(self.VIEWER_EMAIL)
-            self.testapp.get(feconf.LIBRARY_INDEX_URL)
+            self.get_html_response(feconf.LIBRARY_INDEX_URL)
             self.assertEqual(
                 user_services.get_user_settings(self.viewer_id).last_logged_in,
                 previous_last_logged_in_datetime)
             self.logout()
 
-        with self.swap(datetime, 'datetime', PatchedDatetime13Hours):
+        with self.swap(datetime, 'datetime', MockDatetime13Hours):
             self.login(self.VIEWER_EMAIL)
-            self.testapp.get(feconf.LIBRARY_INDEX_URL)
+            self.get_html_response(feconf.LIBRARY_INDEX_URL)
             self.assertGreater(
                 user_services.get_user_settings(self.viewer_id).last_logged_in,
                 previous_last_logged_in_datetime)
@@ -970,6 +1021,9 @@ class LastLoginIntegrationTest(test_utils.GenericTestBase):
 
 
 class LastExplorationEditedIntegrationTests(test_utils.GenericTestBase):
+    """Integration tests for testing the time the user last edited an
+    exploration updates correctly.
+    """
     EXP_ID = 'exp'
 
     def setUp(self):
@@ -995,21 +1049,23 @@ class LastExplorationEditedIntegrationTests(test_utils.GenericTestBase):
         editor_settings = user_services.get_user_settings(self.editor_id)
         self.assertIsNone(editor_settings.last_edited_an_exploration)
 
-        exp_services.update_exploration(self.editor_id, self.EXP_ID, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
 
         editor_settings = user_services.get_user_settings(self.editor_id)
         self.assertIsNotNone(editor_settings.last_edited_an_exploration)
 
     def test_last_exp_edit_time_gets_updated(self):
-        exp_services.update_exploration(self.editor_id, self.EXP_ID, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
 
         # Decrease last exploration edited time by 13 hours.
         user_settings = user_services.get_user_settings(self.editor_id)
@@ -1024,11 +1080,12 @@ class LastExplorationEditedIntegrationTests(test_utils.GenericTestBase):
         self.assertIsNotNone(previous_last_edited_an_exploration)
 
         # The editor edits the exploration 13 hours after it was created.
-        exp_services.update_exploration(self.editor_id, self.EXP_ID, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'new objective'
-        }], 'Test edit 2')
+        exp_services.update_exploration(
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'new objective'
+            })], 'Test edit 2')
 
         # Make sure last exploration edited time gets updated.
         editor_settings = user_services.get_user_settings(self.editor_id)
@@ -1038,6 +1095,9 @@ class LastExplorationEditedIntegrationTests(test_utils.GenericTestBase):
 
 
 class LastExplorationCreatedIntegrationTests(test_utils.GenericTestBase):
+    """Integration tests for the time the user last created an exploration
+    updates correctly.
+    """
     EXP_ID_A = 'exp_a'
     EXP_ID_B = 'exp_b'
 

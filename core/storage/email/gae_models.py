@@ -42,7 +42,7 @@ class SentEmailModel(base_models.BaseModel):
     # The email address of the recipient.
     recipient_email = ndb.StringProperty(required=True)
     # The user ID of the email sender. For site-generated emails this is equal
-    # to feconf.SYSTEM_COMMITTER_ID.
+    # to SYSTEM_COMMITTER_ID.
     sender_id = ndb.StringProperty(required=True)
     # The email address used to send the notification.
     sender_email = ndb.StringProperty(required=True)
@@ -59,6 +59,8 @@ class SentEmailModel(base_models.BaseModel):
         feconf.EMAIL_INTENT_DELETE_EXPLORATION,
         feconf.EMAIL_INTENT_REPORT_BAD_CONTENT,
         feconf.EMAIL_INTENT_QUERY_STATUS_NOTIFICATION,
+        feconf.EMAIL_INTENT_ONBOARD_REVIEWER,
+        feconf.EMAIL_INTENT_REVIEW_SUGGESTIONS,
         feconf.BULK_EMAIL_INTENT_TEST
     ])
     # The subject line of the email.
@@ -160,8 +162,9 @@ class SentEmailModel(base_models.BaseModel):
             if not isinstance(sent_datetime_lower_bound, datetime.datetime):
                 raise Exception(
                     'Expected datetime, received %s of type %s' %
-                    (sent_datetime_lower_bound,
-                     type(sent_datetime_lower_bound)))
+                    (
+                        sent_datetime_lower_bound,
+                        type(sent_datetime_lower_bound)))
 
         query = cls.query().filter(cls.email_hash == email_hash)
 
@@ -239,7 +242,7 @@ class BulkEmailModel(base_models.BaseModel):
     # The user IDs of the email recipients.
     recipient_ids = ndb.JsonProperty(default=[], compressed=True)
     # The user ID of the email sender. For site-generated emails this is equal
-    # to feconf.SYSTEM_COMMITTER_ID.
+    # to SYSTEM_COMMITTER_ID.
     sender_id = ndb.StringProperty(required=True)
     # The email address used to send the notification.
     sender_email = ndb.StringProperty(required=True)
@@ -285,32 +288,30 @@ class BulkEmailModel(base_models.BaseModel):
 REPLY_TO_ID_LENGTH = 84
 
 
-class FeedbackEmailReplyToIdModel(base_models.BaseModel):
-    """This model stores unique_id for each <user, exploration, thread>
+class GeneralFeedbackEmailReplyToIdModel(base_models.BaseModel):
+    """This model stores unique_id for each <user, thread>
     combination.
 
     This unique_id is used in reply-to email address in outgoing feedback and
     suggestion emails. The id/key of instances of this model has form of
-    [USER_ID].[EXPLORATION_ID].[THREAD_ID]
+    [USER_ID].[THREAD_ID]
     """
     # The reply-to ID that is used in the reply-to email address.
     reply_to_id = ndb.StringProperty(indexed=True, required=True)
 
     @classmethod
-    def _generate_id(cls, user_id, exploration_id, thread_id):
-        """Returns the unique id corresponding to the given user id, exploration
-        id and thread id.
+    def _generate_id(cls, user_id, thread_id):
+        """Returns the unique id corresponding to the given user and thread ids.
 
         Args:
             user_id: str. The user id.
-            exploration_id: str. The exploration id.
             thread_id: str. The thread id.
 
         Returns:
             str. The unique id used in the reply-to email address in outgoing
                 feedback and suggestion emails.
         """
-        return '.'.join([user_id, exploration_id, thread_id])
+        return '.'.join([user_id, thread_id])
 
     @classmethod
     def _generate_unique_reply_to_id(cls):
@@ -332,26 +333,26 @@ class FeedbackEmailReplyToIdModel(base_models.BaseModel):
         raise Exception('Unique id generator is producing too many collisions.')
 
     @classmethod
-    def create(cls, user_id, exploration_id, thread_id):
+    def create(cls, user_id, thread_id):
         """Creates a new FeedbackEmailReplyToIdModel instance.
 
         Args:
             user_id: str. ID of the corresponding user.
-            exploration_id: str. ID of the corresponding exploration.
             thread_id: str. ID of the corresponding thread.
 
         Returns:
-            str. A unique ID that can be used in 'reply-to' email address.
+            FeedbackEmailReplyToIdModel. The created instance
+            with the unique reply_to_id generated.
 
         Raises:
-            Exception: Model instance for given user_id, exploration_id and
+            Exception: Model instance for given user_id and
                 thread_id already exists.
         """
 
-        instance_id = cls._generate_id(user_id, exploration_id, thread_id)
+        instance_id = cls._generate_id(user_id, thread_id)
         if cls.get_by_id(instance_id):
-            raise Exception('Unique reply-to ID for given user, exploration and'
-                            ' thread already exists.')
+            raise Exception('Unique reply-to ID for given user and thread'
+                            ' already exists.')
 
         reply_to_id = cls._generate_unique_reply_to_id()
         return cls(id=instance_id, reply_to_id=reply_to_id)
@@ -365,22 +366,20 @@ class FeedbackEmailReplyToIdModel(base_models.BaseModel):
             reply_to_id: str. The unique 'reply-to' id.
 
         Returns:
-            str or None. The FeedbackEmailReplyToIdModel instance corresponding
-                to the given 'reply-to' id if it is fetched else None.
+            FeedbackEmailReplyToIdModel or None. The instance corresponding to
+            the given 'reply_to_id' if it is present in the datastore,
+            else None.
         """
-        model = cls.query(cls.reply_to_id == reply_to_id).fetch()
-        if not model:
-            return None
-        return model[0]
+        model = cls.query(cls.reply_to_id == reply_to_id).get()
+        return model
 
     @classmethod
-    def get(cls, user_id, exploration_id, thread_id, strict=True):
+    def get(cls, user_id, thread_id, strict=True):
         """Gets the FeedbackEmailReplyToIdModel instance corresponding to the
         unique instance id.
 
         Args:
             user_id: str. The user id.
-            exploration_id: str. The exploration id.
             thread_id: str. The thread id.
             strict: bool. Whether to fail noisily if no entry with the given
                 instance id exists in the datastore. Default is True.
@@ -389,18 +388,18 @@ class FeedbackEmailReplyToIdModel(base_models.BaseModel):
             A FeedbackEmailReplyToIdModel instance that corresponds to the given
                 instance id if it is present in the datastore. Otherwise, None.
         """
-        instance_id = cls._generate_id(user_id, exploration_id, thread_id)
+        instance_id = cls._generate_id(user_id, thread_id)
         return super(
-            FeedbackEmailReplyToIdModel, cls).get(instance_id, strict=strict)
+            GeneralFeedbackEmailReplyToIdModel, cls).get(
+                instance_id, strict=strict)
 
     @classmethod
-    def get_multi_by_user_ids(cls, user_ids, exploration_id, thread_id):
+    def get_multi_by_user_ids(cls, user_ids, thread_id):
         """Returns the FeedbackEmailReplyToIdModel instances corresponding to
         the given user ids in dict format.
 
         Args:
             user_ids: list(str). A list of user ids.
-            exploration_id: str. The exploration id.
             thread_id: str. The thread id.
 
         Returns:
@@ -409,36 +408,8 @@ class FeedbackEmailReplyToIdModel(base_models.BaseModel):
                 user id, and the corresponding value is the list of
                 FeedbackEmailReplyToIdModel instances.
         """
-        instance_ids = [cls._generate_id(user_id, exploration_id, thread_id)
+        instance_ids = [cls._generate_id(user_id, thread_id)
                         for user_id in user_ids]
         user_models = cls.get_multi(instance_ids)
         return {
             user_id: model for user_id, model in zip(user_ids, user_models)}
-
-    @property
-    def user_id(self):
-        """Returns the user id corresponding to this FeedbackEmailReplyToIdModel
-        instance.
-
-        Returns:
-            str. The user id.
-        """
-        return self.id.split('.')[0]
-
-    @property
-    def exploration_id(self):
-        """Returns the exploration id extracted from the unique id.
-
-        Returns:
-            str. The exploration id.
-        """
-        return self.id.split('.')[1]
-
-    @property
-    def thread_id(self):
-        """Returns the thread id extracted from the unique id.
-
-        Returns:
-            str. The thread id.
-        """
-        return self.id.split('.')[2]

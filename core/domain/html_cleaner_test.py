@@ -32,6 +32,12 @@ class HtmlCleanerUnitTests(test_utils.GenericTestBase):
             '<a href="http://www.google.com">Hello</a>',
             '<a href="http://www.google.com">Hello</a>'
         ), (
+            '<a href="http://www.google.com" target="_blank">Hello</a>',
+            '<a href="http://www.google.com" target="_blank">Hello</a>'
+        ), (
+            '<a href="http://www.google.com" title="Hello">Hello</a>',
+            '<a href="http://www.google.com" title="Hello">Hello</a>'
+        ), (
             'Just some text 12345',
             'Just some text 12345'
         ), (
@@ -48,7 +54,7 @@ class HtmlCleanerUnitTests(test_utils.GenericTestBase):
         for datum in test_data:
             self.assertEqual(
                 html_cleaner.clean(datum[0]), datum[1],
-                '\n\nOriginal text: %s' % datum[0])
+                msg='\n\nOriginal text: %s' % datum[0])
 
     def test_bad_tags_suppressed(self):
         test_data = [(
@@ -77,7 +83,7 @@ class HtmlCleanerUnitTests(test_utils.GenericTestBase):
         for datum in test_data:
             self.assertEqual(
                 html_cleaner.clean(datum[0]), datum[1],
-                '\n\nOriginal text: %s' % datum[0])
+                msg='\n\nOriginal text: %s' % datum[0])
 
     def test_oppia_custom_tags(self):
         test_data = [(
@@ -97,7 +103,7 @@ class HtmlCleanerUnitTests(test_utils.GenericTestBase):
         for datum in test_data:
             self.assertEqual(
                 html_cleaner.clean(datum[0]), datum[1],
-                '\n\nOriginal text: %s' % datum[0])
+                msg='\n\nOriginal text: %s' % datum[0])
 
 
 class HtmlStripperUnitTests(test_utils.GenericTestBase):

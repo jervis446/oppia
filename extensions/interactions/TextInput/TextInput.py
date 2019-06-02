@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Python configuration for TextInput interaction."""
+
 from extensions.interactions import base
 
 
@@ -70,5 +72,14 @@ class TextInput(base.BaseInteraction):
             'title': 'Top answers',
         },
         'calculation_id': 'Top10AnswerFrequencies',
+        'addressed_info_is_supported': True,
+    }, {
+        # Table with answer counts for top N unresolved answers.
+        'id': 'FrequencyTable',
+        'options': {
+            'column_headers': ['Answer', 'Count'],
+            'title': 'Top unresolved answers',
+        },
+        'calculation_id': 'TopNUnresolvedAnswersByFrequency',
         'addressed_info_is_supported': True,
     }]

@@ -16,6 +16,7 @@
 
 import datetime
 import logging
+import re
 
 from core.domain import classifier_domain
 from core.platform import models
@@ -153,6 +154,55 @@ def handle_non_retrainable_states(exploration, state_names, exp_versions_diff):
         job_exploration_mappings)
 
 
+def convert_strings_to_float_numbers_in_classifier_data(
+        classifier_data_with_floats_stringified):
+    """Converts all floating point numbers in classifier data to string.
+
+    The following function iterates through entire classifier data and converts
+    all string values which are successfully matched by regex of floating point
+    numbers to corresponding float values.
+
+    Args:
+        classifier_data_with_floats_stringified: dict|list|string|int.
+            The original classifier data which needs conversion of floats from
+            strings to floats.
+
+    Raises:
+        Exception. If classifier data contains an object whose type is other
+            than integer, string, dict or list.
+
+    Returns:
+        dict|list|string|int|float. Original classifier data dict with
+            float values converted back from string to float.
+    """
+    if isinstance(classifier_data_with_floats_stringified, dict):
+        classifier_data = {}
+        for k in classifier_data_with_floats_stringified:
+            classifier_data[k] = (
+                convert_strings_to_float_numbers_in_classifier_data(
+                    classifier_data_with_floats_stringified[k]))
+        return classifier_data
+    elif isinstance(classifier_data_with_floats_stringified, list):
+        classifier_data = []
+        for item in classifier_data_with_floats_stringified:
+            classifier_data.append(
+                convert_strings_to_float_numbers_in_classifier_data(item))
+        return classifier_data
+    elif isinstance(classifier_data_with_floats_stringified, basestring):
+        if re.match(
+                feconf.FLOAT_VERIFIER_REGEX,
+                classifier_data_with_floats_stringified):
+            return float(classifier_data_with_floats_stringified)
+        return classifier_data_with_floats_stringified
+    elif isinstance(classifier_data_with_floats_stringified, int):
+        return classifier_data_with_floats_stringified
+    else:
+        raise Exception(
+            'Expected all classifier data objects to be lists, dicts, '
+            'strings, integers but received %s.' % type(
+                classifier_data_with_floats_stringified))
+
+
 def get_classifier_training_job_from_model(classifier_training_job_model):
     """Gets a classifier training job domain object from a classifier
     training job model.
@@ -204,7 +254,7 @@ def _update_classifier_training_jobs_status(job_ids, status):
     """Checks for the existence of the model and then updates it.
 
     Args:
-        job_id: list(str). list of ID of the ClassifierTrainingJob domain
+        job_ids: list(str). list of ID of the ClassifierTrainingJob domain
             objects.
         status: str. The status to which the job needs to be updated.
 
@@ -271,11 +321,6 @@ def _update_scheduled_check_time_for_new_training_job(job_id):
     classifier_training_job_model = (
         classifier_models.ClassifierTrainingJobModel.get(job_id))
 
-    if not classifier_training_job_model:
-        raise Exception(
-            'The ClassifierTrainingJobModel corresponding to the job_id '
-            'of the ClassifierTrainingJob does not exist.')
-
     classifier_training_job_model.next_scheduled_check_time = (
         datetime.datetime.utcnow() + datetime.timedelta(
             minutes=feconf.CLASSIFIER_JOB_TTL_MINS))
@@ -336,7 +381,7 @@ def store_classifier_data(job_id, classifier_data):
         classifier_models.ClassifierTrainingJobModel.get(job_id, strict=False))
     if not classifier_training_job_model:
         raise Exception(
-            'The ClassifierTrainingJobModel corresponding to the job_id of the'
+            'The ClassifierTrainingJobModel corresponding to the job_id of the '
             'ClassifierTrainingJob does not exist.')
 
     classifier_training_job = get_classifier_training_job_from_model(
@@ -393,3 +438,31 @@ def get_classifier_training_jobs(exp_id, exp_version, state_names):
         if mapping_model is None:
             classifier_training_jobs.insert(index, None)
     return classifier_training_jobs
+
+
+def create_classifier_training_job_for_reverted_exploration(
+        exploration, exploration_to_revert_to):
+    """Create classifier training job model when an exploration is reverted.
+
+    Args:
+        exploration: Exploration. Exploration domain object.
+        exploration_to_revert_to: Exploration. Exploration to revert to.
+    """
+    classifier_training_jobs_for_old_version = get_classifier_training_jobs(
+        exploration.id, exploration_to_revert_to.version,
+        exploration_to_revert_to.states.keys())
+    job_exploration_mappings = []
+    state_names = exploration_to_revert_to.states.keys()
+    for index, classifier_training_job in enumerate(
+            classifier_training_jobs_for_old_version):
+        if classifier_training_job is not None:
+            state_name = state_names[index]
+            job_exploration_mapping = (
+                classifier_domain.TrainingJobExplorationMapping(
+                    exploration.id, exploration.version + 1, state_name,
+                    classifier_training_job.job_id))
+            job_exploration_mapping.validate()
+            job_exploration_mappings.append(job_exploration_mapping)
+
+    classifier_models.TrainingJobExplorationMappingModel.create_multi(
+        job_exploration_mappings)

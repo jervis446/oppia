@@ -65,7 +65,7 @@ def _migrate_collection_contents_to_latest_schema(
 
     Args:
         versioned_collection_contents: A dict with two keys:
-          - schema_version: str. The schema version for the collection.
+          - schema_version: int. The schema version for the collection.
           - collection_contents: dict. The dict comprising the collection
               contents.
 
@@ -93,7 +93,7 @@ def _get_collection_memcache_key(collection_id, version=None):
 
     Args:
         collection_id: str. ID of the collection.
-        version: str. Schema version of the collection.
+        version: int. Schema version of the collection.
 
     Returns:
         str. The memcache key of the collection.
@@ -104,22 +104,13 @@ def _get_collection_memcache_key(collection_id, version=None):
         return 'collection:%s' % collection_id
 
 
-def get_collection_from_model(collection_model, run_conversion=True):
+def get_collection_from_model(collection_model):
     """Returns a Collection domain object given a collection model loaded
     from the datastore.
 
     Args:
         collection_model: CollectionModel. The collection model loaded from the
             datastore.
-        run_conversion: bool. If true, the the collection's schema version will
-            be checked against the current schema version. If they do not match,
-            the collection will be automatically updated to the latest schema
-            version.
-
-            IMPORTANT NOTE TO DEVELOPERS: In general, run_conversion should
-            never be False. This option is only used for testing that the
-            schema version migration works correctly, and it should never be
-            changed otherwise.
 
     Returns:
         Collection. A Collection domain object corresponding to the given
@@ -140,7 +131,7 @@ def get_collection_from_model(collection_model, run_conversion=True):
         }
 
     # Migrate the collection if it is not using the latest schema version.
-    if (run_conversion and collection_model.schema_version !=
+    if (collection_model.schema_version !=
             feconf.CURRENT_COLLECTION_SCHEMA_VERSION):
         _migrate_collection_contents_to_latest_schema(
             versioned_collection_contents)
@@ -193,7 +184,7 @@ def get_collection_by_id(collection_id, strict=True, version=None):
         collection_id: str. ID of the collection.
         strict: bool. Whether to fail noisily if no collection with the given
             id exists in the datastore.
-        version: str or None. The version number of the collection to be
+        version: int or None. The version number of the collection to be
             retrieved. If it is None, the latest version will be retrieved.
 
     Returns:
@@ -497,13 +488,13 @@ def _get_collection_summary_dicts_from_models(collection_summary_models):
     """Given an iterable of CollectionSummaryModel instances, create a dict
     containing corresponding collection summary domain objects, keyed by id.
 
-    Args：
-        collection_summary_models: An iterable of CollectionSummaryModel
-            instances.
+    Args:
+        collection_summary_models: iterable(CollectionSummaryModel). An
+            iterable of CollectionSummaryModel instances.
 
     Returns:
-        A dict containing corresponding collection summary domain objects, keyed
-        by id.
+        A dict containing corresponding collection summary domain objects,
+        keyed by id.
     """
     collection_summaries = [
         get_collection_summary_from_model(collection_summary_model)
@@ -597,7 +588,7 @@ def apply_change_list(collection_id, change_list):
     Args:
         collection_id: str. ID of the given collection.
         change_list: list(dict). A change list to be applied to the given
-            collection. Each entry in change_list is a dict that represents a
+            collection. Each entry is a dict that represents a
             CollectionChange.
     object.
 
@@ -799,11 +790,12 @@ def save_new_collection(committer_id, collection):
     """
     commit_message = (
         'New collection created with title \'%s\'.' % collection.title)
-    _create_collection(committer_id, collection, commit_message, [{
-        'cmd': CMD_CREATE_NEW,
-        'title': collection.title,
-        'category': collection.category,
-    }])
+    _create_collection(
+        committer_id, collection, commit_message, [{
+            'cmd': CMD_CREATE_NEW,
+            'title': collection.title,
+            'category': collection.category,
+        }])
 
 
 def delete_collection(committer_id, collection_id, force_deletion=False):
@@ -894,15 +886,15 @@ def update_collection(
     """Updates a collection. Commits changes.
 
     Args:
-    - committer_id: str. The id of the user who is performing the update
-        action.
-    - collection_id: str. The collection id.
-    - change_list: list of dicts, each representing a CollectionChange object.
-        These changes are applied in sequence to produce the resulting
-        collection.
-    - commit_message: str or None. A description of changes made to the
-        collection. For published collections, this must be present; for
-        unpublished collections, it may be equal to None.
+        committer_id: str. The id of the user who is performing the update
+            action.
+        collection_id: str. The collection id.
+        change_list: list(dict). Each entry represents a CollectionChange
+            object. These changes are applied in sequence to produce the
+            resulting collection.
+        commit_message: str or None. A description of changes made to the
+            collection. For published collections, this must be present; for
+            unpublished collections, it may be equal to None.
     """
     is_public = rights_manager.is_collection_public(collection_id)
 
@@ -952,7 +944,7 @@ def compute_summary_of_collection(collection, contributor_id_to_add):
     object and return it.
 
     Args:
-        collection_id: str. ID of the collection.
+        collection: Collection. The domain object.
         contributor_id_to_add: str. ID of the contributor to be added to the
             collection summary.
 
@@ -975,11 +967,11 @@ def compute_summary_of_collection(collection, contributor_id_to_add):
         contributors_summary = {}
 
     if (contributor_id_to_add is not None and
-            contributor_id_to_add not in feconf.SYSTEM_USER_IDS and
+            contributor_id_to_add not in constants.SYSTEM_USER_IDS and
             contributor_id_to_add not in contributor_ids):
         contributor_ids.append(contributor_id_to_add)
 
-    if contributor_id_to_add not in feconf.SYSTEM_USER_IDS:
+    if contributor_id_to_add not in constants.SYSTEM_USER_IDS:
         if contributor_id_to_add is None:
             # Revert commit or other non-positive commit.
             contributors_summary = compute_collection_contributors_summary(
@@ -1026,7 +1018,7 @@ def compute_collection_contributors_summary(collection_id):
         snapshot_metadata = snapshots_metadata[current_version - 1]
         committer_id = snapshot_metadata['committer_id']
         is_revert = (snapshot_metadata['commit_type'] == 'revert')
-        if not is_revert and committer_id not in feconf.SYSTEM_USER_IDS:
+        if not is_revert and committer_id not in constants.SYSTEM_USER_IDS:
             contributors_summary[committer_id] += 1
 
         if current_version == 1:
@@ -1091,6 +1083,9 @@ def save_new_collection_from_yaml(committer_id, yaml_content, collection_id):
         committer_id: str. ID of the committer.
         yaml_content: str. The yaml content string specifying a collection.
         collection_id: str. ID of the saved collection.
+
+    Returns:
+        Collection. The domain object.
     """
     collection = collection_domain.Collection.from_yaml(
         collection_id, yaml_content)
@@ -1098,11 +1093,12 @@ def save_new_collection_from_yaml(committer_id, yaml_content, collection_id):
         'New collection created from YAML file with title \'%s\'.'
         % collection.title)
 
-    _create_collection(committer_id, collection, commit_message, [{
-        'cmd': CMD_CREATE_NEW,
-        'title': collection.title,
-        'category': collection.category,
-    }])
+    _create_collection(
+        committer_id, collection, commit_message, [{
+            'cmd': CMD_CREATE_NEW,
+            'title': collection.title,
+            'category': collection.category,
+        }])
 
     return collection
 

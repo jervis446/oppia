@@ -26,25 +26,27 @@ import schema_utils_test
 class ObjectNormalizationUnitTests(test_utils.GenericTestBase):
     """Tests normalization of typed objects."""
 
-    def check_normalization(self, cls, mappings, invalid_items):
+    def check_normalization(self, object_class, mappings, invalid_items):
         """Test that values are normalized correctly.
 
         Args:
-          cls: the class whose normalize() method is to be tested.
+          object_class: the class whose normalize() method is to be tested.
           mappings: a list of 2-element tuples. The first element of
             each item is expected to be normalized to the second.
           invalid_items: a list of values. Each of these is expected to raise
             a TypeError when normalized.
         """
         for item in mappings:
-            assert cls.normalize(item[0]) == item[1], (
+            assert object_class.normalize(item[0]) == item[1], (
                 'Expected %s when normalizing %s as a %s, got %s' %
-                (item[1], item[0], cls.__name__, cls.normalize(item[0]))
+                (
+                    item[1], item[0],
+                    object_class.__name__, object_class.normalize(item[0]))
             )
 
         for item in invalid_items:
             with self.assertRaises(Exception):
-                cls.normalize(item)
+                object_class.normalize(item)
 
     def test_boolean_validation(self):
         """Tests objects of type Boolean."""
@@ -139,6 +141,22 @@ class ObjectNormalizationUnitTests(test_utils.GenericTestBase):
             'G4', {'n': 1}, 2.0, None, {'readableNoteName': 'C5'}]
 
         self.check_normalization(objects.MusicPhrase, mappings, invalid_values)
+
+    def test_list_of_tabs(self):
+        """Tests objects of type ListOfDict."""
+        mappings = [([
+            {'content': '<p>Hello</p>', 'title': 'Tabs'},
+            {'content': '<iframe src="site"></iframe>', 'title': u'¡Hola!'}
+        ], [
+            {'content': '<p>Hello</p>', 'title': u'Tabs'},
+            {'content': '', 'title': u'¡Hola!'}
+        ]), ([], [])]
+        invalid_values = [
+            '123', 3.0, None, [3, 'a'],
+            [{'content': '<p>abc</p>', 'url': 'xyx'}],
+            [{'content': '<p>abc</p>', 'title': 'xyz'}, [1, 2, 3]]]
+        self.check_normalization(
+            objects.ListOfTabs, mappings, invalid_values)
 
     def test_set_of_unicode_string_validation(self):
         """Tests objects of type SetOfUnicodeString."""
@@ -424,11 +442,22 @@ class ObjectNormalizationUnitTests(test_utils.GenericTestBase):
 
     def _create_fraction_dict(
             self, is_negative, whole_number, numerator, denominator):
+        """Returns the fraction object in the dict format.
+
+        Args:
+            is_negative: bool. Whether the given fraction is negative.
+            whole_number: int. The whole number of the fraction.
+            numerator: int. The numerator part of the fraction.
+            denominator: int. The denominator part of the fraction.
+
+        Returns:
+            dict(str, *). The fraction object.
+        """
         return {
-            "isNegative": is_negative,
-            "wholeNumber": whole_number,
-            "numerator": numerator,
-            "denominator": denominator
+            'isNegative': is_negative,
+            'wholeNumber': whole_number,
+            'numerator': numerator,
+            'denominator': denominator
         }
 
 
@@ -442,7 +471,7 @@ class SchemaValidityTests(test_utils.GenericTestBase):
                     schema_utils_test.validate_schema(member.SCHEMA)
                     count += 1
 
-        self.assertEquals(count, 32)
+        self.assertEqual(count, 38)
 
 
 class ObjectDefinitionTests(test_utils.GenericTestBase):

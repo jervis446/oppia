@@ -13,11 +13,13 @@
 // limitations under the License.
 
 /**
- * @fileoverview  End-to-end tests for testing accessibility features
+ * @fileoverview End-to-end tests for testing accessibility features
  * and check for any console errors
  */
 
 var general = require('../protractor_utils/general.js');
+var waitFor = require('../protractor_utils/waitFor.js');
+
 var LibraryPage = require('../protractor_utils/LibraryPage.js');
 
 describe('screenreader and keyboard user accessibility features', function() {
@@ -28,16 +30,27 @@ describe('screenreader and keyboard user accessibility features', function() {
   });
 
   it('should skip to the main content element', function() {
-    var mainContent = element(by.css('.protractor-test-main-content'));
     libraryPage.get();
     browser.actions().sendKeys(protractor.Key.TAB).perform();
-    general.waitForSystem();
-    element(by.css('.protractor-test-skip-link')).click();
+    var skipLink = element(by.css('.protractor-test-skip-link'));
+    waitFor.elementToBeClickable(skipLink, 'Could not click skip link');
+    skipLink.click();
+    var mainContent = element(by.css('.protractor-test-main-content'));
     expect(mainContent.getAttribute('id'))
       .toEqual(browser.driver.switchTo().activeElement().getAttribute('id'));
   });
 
   afterEach(function() {
     general.checkForConsoleErrors([]);
+  });
+});
+
+describe('Cache Slugs', function() {
+  it('should check that errors get logged for missing resources', function() {
+    browser.get('/console_errors');
+    var expectedErrors = [
+      'http://localhost:9001/build/fail/logo/288x128_logo_white.png'
+    ];
+    general.checkConsoleErrorsExist(expectedErrors);
   });
 });

@@ -111,10 +111,10 @@ class ClassifierTrainingJobModel(base_models.BaseModel):
                 this training job was created.
             next_scheduled_check_time: datetime.datetime. The next scheduled
                 time to check the job.
+            training_data: dict. The data used in training phase.
             state_name: str. The name of the state to which the classifier
                 belongs.
             status: str. The status of the training job.
-            training_data: dict. The data used in training phase.
             classifier_data: dict|None. The data stored as result of training.
             data_schema_version: int. The schema version for the data.
 
@@ -285,18 +285,22 @@ class TrainingJobExplorationMappingModel(base_models.BaseModel):
 
     @classmethod
     def create_multi(cls, job_exploration_mappings):
-        """Creates multiple new  TrainingJobExplorationMappingModel entries.
+        """Creates multiple new TrainingJobExplorationMappingModel entries.
 
         Args:
             job_exploration_mappings: list(TrainingJobExplorationMapping). The
                 list of TrainingJobExplorationMapping Domain objects.
+
+        Returns:
+            list(int). The list of mapping IDs.
         """
         mapping_models = []
         mapping_ids = []
         for job_exploration_mapping in job_exploration_mappings:
-            instance_id = cls._generate_id(job_exploration_mapping.exp_id,
-                                           job_exploration_mapping.exp_version,
-                                           job_exploration_mapping.state_name)
+            instance_id = cls._generate_id(
+                job_exploration_mapping.exp_id,
+                job_exploration_mapping.exp_version,
+                job_exploration_mapping.state_name)
             mapping_instance = cls(
                 id=instance_id, exp_id=job_exploration_mapping.exp_id,
                 exp_version=job_exploration_mapping.exp_version,

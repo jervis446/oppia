@@ -7,8 +7,13 @@
  * 3. All values and keys must be constant, you can't use any Javascript
  *    functions.
  */
+
+/**
+ * @fileoverview Initializes constants for the Oppia codebase.
+ */
+
 var constants = {
-  "//": "Whether to allow custom event reporting to Google Analytics.",
+  // Whether to allow custom event reporting to Google Analytics.
   "CAN_SEND_ANALYTICS_EVENTS": false,
 
   "ALL_CATEGORIES": ["Algebra", "Algorithms", "Architecture", "Arithmetic",
@@ -30,14 +35,19 @@ var constants = {
   "DEFAULT_THUMBNAIL_ICON": "Lightbulb",
   "DEFAULT_CATEGORY_ICON": "Lightbulb",
 
-  "//": "The default language code for an exploration.",
+  // These categories are shown in the library navbar. The categories should
+  // be in sorted order.
+  "SEARCH_DROPDOWN_CATEGORIES": ["Algorithms", "Architecture", "Art",
+    "Biology", "Business", "Chemistry", "Economics", "English", "Geography",
+    "History", "Mathematics", "Medicine", "Music", "Physics", "Programming",
+    "Reading", "Statistics"],
+
+  // The default language code for an exploration.
   "DEFAULT_LANGUAGE_CODE": "en",
 
-  "//": [
-    "List of supported default categories. For now, each category has a specific ",
-    "color associated with it. Each category also has a thumbnail icon whose ",
-    "filename is '{{CategoryName}}.svg'."
-  ],
+  // List of supported default categories. For now, each category has a specific
+  // color associated with it. Each category also has a thumbnail icon whose
+  // filename is '{{CategoryName}}.svg'.
   "CATEGORIES_TO_COLORS": {
     "Mathematics": "#cd672b",
     "Algebra": "#cd672b",
@@ -89,11 +99,9 @@ var constants = {
     "Welcome": "#992a2b"
   },
 
-  "//": [
-    "List of supported language codes. Each description has a ",
-    "parenthetical part that may be stripped out to give a shorter ",
-    "description."
-  ],
+  // List of supported language codes. Each description has a
+  // parenthetical part that may be stripped out to give a shorter
+  // description.
   "ALL_LANGUAGE_CODES": [{
     "code": "en",
     "description": "English"
@@ -216,10 +224,8 @@ var constants = {
     "description": "Tiếng Việt (Vietnamese)"
   }],
 
-  "//": [
-    "NOTE TO DEVELOPERS: While adding another language, please ensure that the ",
-    "languages are in alphabetical order."
-  ],
+  // NOTE TO DEVELOPERS: While adding another language, please ensure that the
+  // languages are in alphabetical order.
   "SUPPORTED_SITE_LANGUAGES": [{
     "id": "id",
     "text": "Bahasa Indonesia"
@@ -227,38 +233,17 @@ var constants = {
     "id": "en",
     "text": "English"
   }, {
-    "id": "de",
-    "text": "Deutsch"
-  }, {
-    "id": "fr",
-    "text": "Français"
-  }, {
-    "id": "nl",
-    "text": "Nederlands"
-  }, {
     "id": "es",
     "text": "Español"
   }, {
-    "id": "hu",
-    "text": "Magyar"
-  }, {
-    "id": "pt",
-    "text": "Português"
-  }, {
     "id": "pt-br",
     "text": "Português (Brasil)"
-  }, {
-    "id": "sv",
-    "text": "svenska"
   }, {
     "id": "ar",
     "text": "العربية"
   }, {
     "id": "kab",
     "text": "Taqbaylit"
-  }, {
-    "id": "mk",
-    "text": "македонски јазик"
   }, {
     "id": "vi",
     "text": "Tiếng Việt"
@@ -269,9 +254,6 @@ var constants = {
     "id": "bn",
     "text": "বাংলা"
   }, {
-    "id": "tr",
-    "text": "Türkçe"
-  }, {
     "id": "zh-hans",
     "text": "中文(简体)"
   }, {
@@ -279,191 +261,317 @@ var constants = {
     "text": "中文(繁體)"
   }],
 
-  "//": [
-    "Related languages are used to prioritize an exploration's language when ",
-    "setting the default audio language."
-  ],
+  // Related languages are used to prioritize an exploration's language when
+  // setting the default audio language.
   "SUPPORTED_AUDIO_LANGUAGES": [{
     "id": "en",
-    "text": "English",
+    "description": "English",
     "related_languages": ["en"]
   }, {
     "id": "ar",
-    "text": "Arabic",
+    "description": "Arabic",
     "related_languages": ["ar"]
   }, {
     "id": "bg",
-    "text": "Bulgarian",
+    "description": "Bulgarian",
     "related_languages": ["bg"]
   }, {
     "id": "bn",
-    "text": "Bangla",
+    "description": "Bangla",
     "related_languages": ["bn"]
   }, {
     "id": "ca",
-    "text": "Catalan",
+    "description": "Catalan",
     "related_languages": ["ca"]
   }, {
     "id": "zh",
-    "text": "Chinese",
+    "description": "Chinese",
     "related_languages": ["zh"]
   }, {
     "id": "hr",
-    "text": "Croatian",
+    "description": "Croatian",
     "related_languages": ["hr"]
   }, {
     "id": "cs",
-    "text": "Czech",
+    "description": "Czech",
     "related_languages": ["cs"]
   }, {
     "id": "da",
-    "text": "Danish",
+    "description": "Danish",
     "related_languages": ["da"]
   }, {
     "id": "nl",
-    "text": "Dutch",
+    "description": "Dutch",
     "related_languages": ["nl"]
   }, {
     "id": "tl",
-    "text": "Filipino",
+    "description": "Filipino",
     "related_languages": ["tl"]
   }, {
     "id": "fi",
-    "text": "Finnish",
+    "description": "Finnish",
     "related_languages": ["fi"]
   }, {
     "id": "fr",
-    "text": "French",
+    "description": "French",
     "related_languages": ["fr"]
   }, {
     "id": "de",
-    "text": "German",
+    "description": "German",
     "related_languages": ["de"]
   }, {
     "id": "el",
-    "text": "Greek",
+    "description": "Greek",
     "related_languages": ["el"]
   }, {
     "id": "he",
-    "text": "Hebrew",
+    "description": "Hebrew",
     "related_languages": ["he"]
   }, {
     "id": "hi",
-    "text": "Hindi",
+    "description": "Hindi",
     "related_languages": ["hi"]
   }, {
     "id": "hi-en",
-    "text": "Hinglish",
+    "description": "Hinglish",
     "related_languages": ["hi", "en"]
   }, {
     "id": "hu",
-    "text": "Hungarian",
+    "description": "Hungarian",
     "related_languages": ["hu"]
   }, {
     "id": "id",
-    "text": "Indonesian",
+    "description": "Indonesian",
     "related_languages": ["id"]
   }, {
     "id": "it",
-    "text": "Italian",
+    "description": "Italian",
     "related_languages": ["it"]
   }, {
     "id": "ja",
-    "text": "Japanese",
+    "description": "Japanese",
     "related_languages": ["ja"]
   }, {
     "id": "kab",
-    "text": "Kabyle",
+    "description": "Kabyle",
     "related_languages": ["kab"]
   }, {
     "id": "ko",
-    "text": "Korean",
+    "description": "Korean",
     "related_languages": ["ko"]
   }, {
     "id": "lv",
-    "text": "Latvian",
+    "description": "Latvian",
     "related_languages": ["lv"]
   }, {
     "id": "lt",
-    "text": "Lithuanian",
+    "description": "Lithuanian",
     "related_languages": ["lt"]
   }, {
     "id": "no",
-    "text": "Norwegian",
+    "description": "Norwegian",
     "related_languages": ["no"]
   }, {
     "id": "fa",
-    "text": "Persian",
+    "description": "Persian",
     "related_languages": ["fa"]
   }, {
     "id": "pl",
-    "text": "Polish",
+    "description": "Polish",
     "related_languages": ["pl"]
   }, {
     "id": "pt",
-    "text": "Portuguese",
+    "description": "Portuguese",
     "related_languages": ["pt"]
   }, {
     "id": "ro",
-    "text": "Romanian",
+    "description": "Romanian",
     "related_languages": ["ro"]
   }, {
     "id": "ru",
-    "text": "Russian",
+    "description": "Russian",
     "related_languages": ["ru"]
   }, {
     "id": "sr",
-    "text": "Serbian",
+    "description": "Serbian",
     "related_languages": ["sr"]
   }, {
     "id": "sk",
-    "text": "Slovak",
+    "description": "Slovak",
     "related_languages": ["sk"]
   }, {
     "id": "sl",
-    "text": "Slovenian",
+    "description": "Slovenian",
     "related_languages": ["sl"]
   }, {
     "id": "es",
-    "text": "Spanish",
+    "description": "Spanish",
     "related_languages": ["es"]
   }, {
     "id": "sv",
-    "text": "Swedish",
+    "description": "Swedish",
     "related_languages": ["sw"]
   }, {
     "id": "th",
-    "text": "Thai",
+    "description": "Thai",
     "related_languages": ["th"]
   }, {
     "id": "tr",
-    "text": "Turkish",
+    "description": "Turkish",
     "related_languages": ["tr"]
   }, {
     "id": "uk",
-    "text": "Ukrainian",
+    "description": "Ukrainian",
     "related_languages": ["uk"]
   }, {
     "id": "vi",
-    "text": "Vietnamese",
+    "description": "Vietnamese",
     "related_languages": ["vi"]
   }],
 
   "AUTOGENERATED_AUDIO_LANGUAGES": [{
     "id": "en-auto",
-    "text": "English (auto)",
+    "description": "English (auto)",
     "exploration_language": "en",
     "speech_synthesis_code": "en-GB",
     "speech_synthesis_code_mobile": "en_US"
   }],
 
-  "//" : "Types of view in creator dashboard page.",
+  // Types of view in creator dashboard page.
   "ALLOWED_CREATOR_DASHBOARD_DISPLAY_PREFS": {
     "CARD": "card",
     "LIST": "list"
   },
 
+  "ALLOWED_QUESTION_INTERACTION_CATEGORIES": [{
+    "name": "General",
+    "interaction_ids": [
+        "MultipleChoiceInput",
+        "TextInput"
+    ]
+  }, {
+    "name": "Math",
+    "interaction_ids": [
+        "NumericInput"
+    ]
+  }],
+
+  // These categories and interactions are displayed in the order in which they
+  // appear in the interaction selector.
+  "ALLOWED_INTERACTION_CATEGORIES": [{
+    "name": "General",
+    "interaction_ids": [
+        "Continue",
+        "EndExploration",
+        "ImageClickInput",
+        "ItemSelectionInput",
+        "MultipleChoiceInput",
+        "TextInput",
+        "DragAndDropSortInput"
+    ]
+  }, {
+    "name": "Math",
+    "interaction_ids": [
+        "FractionInput",
+        "GraphInput",
+        "LogicProof",
+        "NumericInput",
+        "SetInput",
+        "MathExpressionInput",
+        "NumberWithUnits"
+    ]
+  }, {
+    "name": "Programming",
+    "interaction_ids": [
+        "CodeRepl",
+        "PencilCodeEditor"
+    ]
+  }, {
+    "name": "Music",
+    "interaction_ids": [
+        "MusicNotesInput"
+    ]
+  }, {
+    "name": "Geography",
+    "interaction_ids": [
+        "InteractiveMap"
+    ]
+  }],
+
   "WHITELISTED_COLLECTION_IDS_FOR_SAVING_GUEST_PROGRESS": [],
 
-  "FEEDBACK_SUBJECT_MAX_CHAR_LIMIT": 50
+  "FEEDBACK_SUBJECT_MAX_CHAR_LIMIT": 50,
+
+  "ACTIVITY_STATUS_PRIVATE": "private",
+  "ACTIVITY_STATUS_PUBLIC": "public",
+
+  "SITE_FEEDBACK_FORM_URL": "",
+
+  "SYSTEM_USER_IDS": ["admin", "OppiaMigrationBot"],
+
+  // A string containing the disallowed characters in state or exploration
+  // names. The underscore is needed because spaces in names must be converted
+  // to underscores when displayed as part of a URL or key. The other
+  // conventions here are derived from the Wikipedia guidelines for naming
+  // articles.
+  "INVALID_NAME_CHARS": [
+    ":", "#", "/", "|", "_", "%", "<", ">", "[", "]", "{", "}", "\\ufffd",
+    "\\\\", "\\u007f", "\\u0000", "\\u0001", "\\u0002", "\\u0003", "\\u0004",
+    "\\u0005", "\\u0006", "\\u0007", "\\b", "\\t", "\\n", "\\u000b", "\\f",
+    "\\r", "\\u000e", "\\u000f", "\\u0010", "\\u0011", "\\u0012", "\\u0013",
+    "\\u0014", "\\u0015", "\\u0016", "\\u0017", "\\u0018", "\\u0019", "\\u001a",
+    "\\u001b", "\\u001c", "\\u001d", "\\u001e", "\\u001f"
+  ],
+
+  "DEFAULT_SKILL_DIFFICULTY": 0.3,
+
+  "ENABLE_PREREQUISITE_SKILLS": false,
+
+  "ENABLE_NEW_STRUCTURE_PLAYERS": false,
+
+  "NUM_QUESTIONS_PER_PAGE": 10,
+
+  "NEW_STATE_TEMPLATE": {
+      "classifier_model_id": null,
+      "content": {
+          "html": "",
+          "content_id": "content"
+      },
+      "interaction": {
+            "id": null,
+            "customization_args": {},
+            "answer_groups": [],
+            "default_outcome": {
+                "dest": "Introduction",
+                "feedback": {
+                    "content_id": "default_outcome",
+                    "html": ""
+                },
+                "labelled_as_correct": false,
+                "param_changes": [],
+                "refresher_exploration_id": null,
+                "missing_prerequisite_skill_id": null
+            },
+            "confirmed_unclassified_answers": [],
+            "hints": [],
+            "solution": null
+        },
+      "param_changes": [],
+      "recorded_voiceovers": {
+          "voiceovers_mapping": {
+              "content": {},
+              "default_outcome": {}
+          }
+      },
+      "written_translations": {
+          "translations_mapping": {
+              "content": {},
+              "default_outcome": {}
+          }
+      }
+  },
+
+  "ALLOW_YAML_FILE_UPLOAD": false,
+
+  "DEV_MODE": true
 };

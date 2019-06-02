@@ -157,7 +157,7 @@
   }
 </style>
 
-<div class="footer navbar-fixed-bottom oppia-exploration-footer">
+<div class="footer navbar-fixed-bottom oppia-exploration-footer" ng-if="!iframed">
   <div class="row">
     <div class="col-sm-5">
       <ul class="author-profile" ng-if="!windowIsNarrow">
@@ -181,12 +181,13 @@
                aria-haspopup="true"
                aria-expanded="false">
               <h4 translate="I18N_FOOTER_AUTHOR_PROFILES" class="author-profile-text"
-                  ng-class="{'hovered-text':hovering, 'not-hovered' : !hovering}"></h4>
+                  ng-class="{'hovered-text':hovering, 'not-hovered' : !hovering}">
+              </h4>
             </a>
             <ul uib-dropdown-menu class="author-profile-dropdown-menu uib-dropdown-menu"
                 aria-labelledby="dropdownMenu2" role="menu">
               <li ng-repeat="name in contributorNames | limitTo: 5">
-                <a href="/profile/<[name]>" target="_blank"><[name]></a>
+                <a href="/profile/<[name]>" target="_blank" rel="noopener"><[name]></a>
               </li>
             </ul>
           </div>

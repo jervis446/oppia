@@ -1,3 +1,4 @@
+
 # coding: utf-8
 #
 # Copyright 2014 The Oppia Authors. All Rights Reserved.
@@ -39,7 +40,7 @@ class IncomingReplyEmailTests(test_utils.GenericTestBase):
         self.signup(self.EDITOR_EMAIL, self.EDITOR_USERNAME)
         self.editor_id = self.get_user_id_from_email(self.EDITOR_EMAIL)
         self.exploration = self.save_new_default_exploration(
-            'A', self.editor_id, 'Title')
+            'A', self.editor_id, title='Title')
         self.can_send_emails_ctx = self.swap(
             feconf, 'CAN_SEND_EMAILS', True)
         self.can_send_feedback_email_ctx = self.swap(
@@ -49,40 +50,37 @@ class IncomingReplyEmailTests(test_utils.GenericTestBase):
         with self.can_send_emails_ctx, self.can_send_feedback_email_ctx:
             # Create thread.
             feedback_services.create_thread(
-                self.exploration.id, 'a_state_name', self.user_id_a,
-                'a subject', 'some text')
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id,
+                self.user_id_a, 'a subject', 'some text')
 
             threadlist = feedback_services.get_all_threads(
-                self.exploration.id, False)
-            thread_id = threadlist[0].get_thread_id()
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False)
+            thread_id = threadlist[0].id
 
             # Create another message.
             feedback_services.create_message(
-                self.exploration.id, thread_id, self.user_id_b, None, None,
-                'user b message')
+                thread_id, self.user_id_b, None, None, 'user b message')
 
             # Check that there are 2 messages in thread.
-            messages = feedback_services.get_messages(
-                self.exploration.id, thread_id)
+            messages = feedback_services.get_messages(thread_id)
             self.assertEqual(len(messages), 2)
 
             # Check that received_via_email is set to False.
             self.assertFalse(messages[0].received_via_email)
 
             # Get reply_to id for user A.
-            model = email_models.FeedbackEmailReplyToIdModel.get(
-                self.user_id_a, self.exploration.id, thread_id)
+            model = email_models.GeneralFeedbackEmailReplyToIdModel.get(
+                self.user_id_a, thread_id)
 
             recipient_email = 'reply+%s@%s' % (
                 model.reply_to_id, feconf.INCOMING_EMAILS_DOMAIN_NAME)
             # Send email to Oppia.
             self.post_email(
-                str(recipient_email), self.USER_A_EMAIL, 'feedback email reply',
-                'New reply')
+                str(recipient_email), self.USER_A_EMAIL,
+                'feedback email reply', 'New reply')
 
             # Check that new message is added.
-            messages = feedback_services.get_messages(
-                self.exploration.id, thread_id)
+            messages = feedback_services.get_messages(thread_id)
             self.assertEqual(len(messages), 3)
 
             # Check content of message is correct.
@@ -98,4 +96,4 @@ class IncomingReplyEmailTests(test_utils.GenericTestBase):
         # Send email to Oppia.
         self.post_email(
             recipient_email, self.USER_A_EMAIL, 'feedback email reply',
-            'New reply', expect_errors=True, expected_status_int=404)
+            'New reply', expected_status_int=404)

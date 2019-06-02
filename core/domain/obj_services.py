@@ -31,18 +31,21 @@ class Registry(object):
 
     @classmethod
     def _refresh_registry(cls):
+        """Refreshes the registry by adding new object instances to the
+        registry.
+        """
         cls.objects_dict.clear()
 
         # Add new object instances to the registry.
-        for name, clazz in inspect.getmembers(objects, inspect.isclass):
+        for name, clazz in inspect.getmembers(
+                objects, predicate=inspect.isclass):
             if name.endswith('_test') or name == 'BaseObject':
                 continue
 
             ancestor_names = [
                 base_class.__name__ for base_class in inspect.getmro(clazz)]
-            if 'BaseObject' not in ancestor_names:
-                continue
 
+            assert 'BaseObject' in ancestor_names
             cls.objects_dict[clazz.__name__] = clazz
 
     @classmethod

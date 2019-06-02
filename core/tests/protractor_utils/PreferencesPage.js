@@ -17,16 +17,36 @@
  * tests.
  */
 
+var waitFor = require('./waitFor.js');
+
 var PreferencesPage = function() {
   var USER_PREFERENCES_URL = '/preferences';
   var editorRoleEmailsCheckbox = element(
     by.css('.protractor-test-editor-role-email-checkbox'));
   var feedbackMessageEmailsCheckbox = element(
     by.css('.protractor-test-feedback-message-email-checkbox'));
+  var languageOptionsList = element.all(by.css('.select2-results'));
+  var navBar = element(by.css('.oppia-navbar-dropdown-toggle'));
+  var pageHeader = element(by.css('.protractor-test-preferences-title'));
+  var preferencesLink = element(by.css('.protractor-test-preferences-link'));
+  var preferredAudioLanguageSelector = element(
+    by.css('.protractor-test-preferred-audio-language-selector'));
+  var selectedAudioLanguageElement = preferredAudioLanguageSelector.element(
+    by.css('.select2-selection__rendered'));
   var subscriptions = element.all(by.css('.protractor-test-subscription-name'));
+  var systemLanguageSelector = element.all(
+    by.css('.protractor-test-system-language-selector')).first();
+  var userBioElement = element(by.css('.protractor-test-user-bio'));
+
+  this.editUserBio = function(bio) {
+    userBioElement.sendKeys(bio);
+    navBar.click();
+    preferencesLink.click();
+  };
 
   this.get = function() {
-    return browser.get(USER_PREFERENCES_URL);
+    browser.get(USER_PREFERENCES_URL);
+    return waitFor.pageToFullyLoad();
   };
 
   this.toggleEditorRoleEmailsCheckbox = function() {
@@ -35,6 +55,35 @@ var PreferencesPage = function() {
 
   this.toggleFeedbackEmailsCheckbox = function() {
     feedbackMessageEmailsCheckbox.click();
+  };
+
+  this.selectSystemLanguage = function(language) {
+    systemLanguageSelector.click();
+    var options = element.all(by.css('.select2-dropdown li')).filter(
+      function(elem) {
+        return elem.getText().then(function(text) {
+          return text === language;
+        });
+      });
+    options.first().click();
+  };
+
+  this.selectPreferredAudioLanguage = function(language) {
+    preferredAudioLanguageSelector.click();
+    var correctOptions = languageOptionsList.all(by.tagName('li')).filter(
+      function(elem) {
+        return elem.getText().then(function(text) {
+          return text === language;
+        });
+      });
+    correctOptions.first().click();
+  };
+
+  this.setUserBio = function(bio) {
+    userBioElement.clear();
+    userBioElement.sendKeys(bio);
+    navBar.click();
+    preferencesLink.click();
   };
 
   this.isFeedbackEmailsCheckboxSelected = function() {
@@ -59,8 +108,30 @@ var PreferencesPage = function() {
     expect(subscriptions.last().getText()).toMatch(name);
   };
 
+  this.expectPageHeaderToBe = function(text) {
+    expect(pageHeader.getText()).toEqual(text);
+  };
+
+  this.expectPreferredSiteLanguageToBe = function(language) {
+    var selectedLanguageElement = systemLanguageSelector.element(
+      by.css('.select2-selection__rendered'));
+    expect(selectedLanguageElement.getText()).toEqual(language);
+  };
+
+  this.expectPreferredAudioLanguageToBe = function(language) {
+    expect(selectedAudioLanguageElement.getText()).toEqual(language);
+  };
+
+  this.expectPreferredAudioLanguageNotToBe = function(language) {
+    expect(selectedAudioLanguageElement.getText()).not.toEqual(language);
+  };
+
   this.expectSubscriptionCountToEqual = function(value) {
     expect(subscriptions.count()).toEqual(value);
+  };
+
+  this.expectUserBioToBe = function(bio) {
+    expect(userBioElement.getAttribute('value')).toMatch(bio);
   };
 };
 

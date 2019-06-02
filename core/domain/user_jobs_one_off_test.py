@@ -24,20 +24,21 @@ from constants import constants
 from core.domain import collection_domain
 from core.domain import collection_services
 from core.domain import event_services
+from core.domain import exp_domain
 from core.domain import exp_services
 from core.domain import feedback_services
 from core.domain import rating_services
 from core.domain import rights_manager
 from core.domain import subscription_services
-from core.domain import user_jobs_continuous_test
+from core.domain import user_jobs_continuous
 from core.domain import user_jobs_one_off
 from core.domain import user_services
 from core.platform import models
 from core.tests import test_utils
 import feconf
 
-(user_models, feedback_models) = models.Registry.import_models(
-    [models.NAMES.user, models.NAMES.feedback])
+(user_models, feedback_models, exp_models) = models.Registry.import_models(
+    [models.NAMES.user, models.NAMES.feedback, models.NAMES.exploration])
 taskqueue_services = models.Registry.import_taskqueue_services()
 search_services = models.Registry.import_search_services()
 
@@ -84,20 +85,22 @@ class UserContributionsOneOffJobTests(test_utils.GenericTestBase):
         self.save_new_valid_exploration(
             self.EXP_ID_1, self.user_b_id, end_state_name='End')
 
-        exp_services.update_exploration(self.user_c_id, self.EXP_ID_1, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.user_c_id, self.EXP_ID_1, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
 
         self.save_new_valid_exploration(
             self.EXP_ID_2, self.user_d_id, end_state_name='End')
 
-        exp_services.update_exploration(self.user_d_id, self.EXP_ID_2, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.user_d_id, self.EXP_ID_2, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
 
     def test_null_case(self):
         """Tests the case where user has no created or edited explorations."""
@@ -233,7 +236,7 @@ class UsernameLengthDistributionOneOffJobTests(test_utils.GenericTestBase):
         default user having the username - 'tmpsuperadm1n'.
         """
         output = self._run_one_off_job()
-        # number of users = 1.
+        # Number of users = 1.
         # length of usernames = 13 (tmpsuperadm1n).
         self.assertEqual(output['13'], 1)
 
@@ -243,7 +246,7 @@ class UsernameLengthDistributionOneOffJobTests(test_utils.GenericTestBase):
         """
         self.signup(self.USER_A_EMAIL, self.USER_A_USERNAME)
         output = self._run_one_off_job()
-        # number of users = 2.
+        # Number of users = 2.
         # length of usernames = 13 (tmpsuperadm1n), 1 (a).
         self.assertEqual(output['13'], 1)
         self.assertEqual(output['1'], 1)
@@ -255,7 +258,7 @@ class UsernameLengthDistributionOneOffJobTests(test_utils.GenericTestBase):
         self.signup(self.USER_A_EMAIL, self.USER_A_USERNAME)
         self.signup(self.USER_B_EMAIL, self.USER_B_USERNAME)
         output = self._run_one_off_job()
-        # number of users = 3
+        # Number of users = 3
         # length of usernames = 13 (tmpsuperadm1n), 2 (ab), 1 (a).
         self.assertEqual(output['13'], 1)
         self.assertEqual(output['2'], 1)
@@ -264,7 +267,7 @@ class UsernameLengthDistributionOneOffJobTests(test_utils.GenericTestBase):
         self.signup(self.USER_C_EMAIL, self.USER_C_USERNAME)
         self.signup(self.USER_D_EMAIL, self.USER_D_USERNAME)
         output = self._run_one_off_job()
-        # number of users = 5
+        # Number of users = 5
         # length of usernames = 13 (tmpsuperadm1n), 3 (bcd), 2 (ab, bc), 1 (a).
         self.assertEqual(output['13'], 1)
         self.assertEqual(output['3'], 1)
@@ -432,13 +435,12 @@ class DashboardSubscriptionsOneOffJobTests(test_utils.GenericTestBase):
             ):
             # User B starts a feedback thread.
             feedback_services.create_thread(
-                self.EXP_ID_1, None, self.user_b_id, 'subject', 'text')
+                'exploration', self.EXP_ID_1, self.user_b_id, 'subject', 'text')
             # User C adds to that thread.
             thread_id = feedback_services.get_all_threads(
-                self.EXP_ID_1, False)[0].get_thread_id()
+                'exploration', self.EXP_ID_1, False)[0].id
             feedback_services.create_message(
-                self.EXP_ID_1, thread_id, self.user_c_id, None, None,
-                'more text')
+                thread_id, self.user_c_id, None, None, 'more text')
 
         self._run_one_off_job()
 
@@ -450,13 +452,10 @@ class DashboardSubscriptionsOneOffJobTests(test_utils.GenericTestBase):
 
         self.assertEqual(user_b_subscriptions_model.activity_ids, [])
         self.assertEqual(user_c_subscriptions_model.activity_ids, [])
-        full_thread_id = (
-            feedback_models.FeedbackThreadModel.generate_full_thread_id(
-                self.EXP_ID_1, thread_id))
         self.assertEqual(
-            user_b_subscriptions_model.feedback_thread_ids, [full_thread_id])
+            user_b_subscriptions_model.general_feedback_thread_ids, [thread_id])
         self.assertEqual(
-            user_c_subscriptions_model.feedback_thread_ids, [full_thread_id])
+            user_c_subscriptions_model.general_feedback_thread_ids, [thread_id])
 
     def test_exploration_subscription(self):
         with self.swap(
@@ -705,6 +704,28 @@ class DashboardSubscriptionsOneOffJobTests(test_utils.GenericTestBase):
             user_b_subscriptions_model.collection_ids, [self.COLLECTION_ID_1])
 
 
+class MockUserStatsAggregator(
+        user_jobs_continuous.UserStatsAggregator):
+    """A modified UserStatsAggregator that does not start a new
+     batch job when the previous one has finished.
+    """
+    @classmethod
+    def _get_batch_job_manager_class(cls):
+        return MockUserStatsMRJobManager
+
+    @classmethod
+    def _kickoff_batch_job_after_previous_one_ends(cls):
+        pass
+
+
+class MockUserStatsMRJobManager(
+        user_jobs_continuous.UserStatsMRJobManager):
+
+    @classmethod
+    def _get_continuous_computation_class(cls):
+        return MockUserStatsAggregator
+
+
 class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
     """Tests for the one-off dashboard stats job."""
 
@@ -734,13 +755,29 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
         self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
         self.owner_id = self.get_user_id_from_email(self.OWNER_EMAIL)
 
-    def _mock_get_current_date_as_string(self):
+    def mock_get_current_date_as_string(self):
         return self.CURRENT_DATE_AS_STRING
 
     def _rate_exploration(self, user_id, exp_id, rating):
+        """Assigns rating to the exploration corresponding to the given
+        exploration id.
+
+        Args:
+            user_id: str. The user id.
+            exp_id: str. The exploration id.
+            rating: int. The rating to be assigned to the given exploration.
+        """
         rating_services.assign_rating_to_exploration(user_id, exp_id, rating)
 
     def _record_play(self, exp_id, state):
+        """Calls StartExplorationEventHandler and records the 'play' event
+        corresponding to the given exploration id.
+
+        Args:
+            exp_id: str. The exploration id.
+            state: dict(str, *). The state of the exploration corresponding to
+                the given id.
+        """
         event_services.StartExplorationEventHandler.record(
             exp_id, self.EXP_VERSION, state, self.USER_SESSION_ID, {},
             feconf.PLAY_TYPE_NORMAL)
@@ -755,45 +792,47 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
         self.assertEqual(weekly_stats, None)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id), None)
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             self._run_one_off_job()
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
         expected_results_list = [{
-            self._mock_get_current_date_as_string(): {
+            self.mock_get_current_date_as_string(): {
                 'num_ratings': 0,
                 'average_ratings': None,
                 'total_plays': 0
             }
         }]
         self.assertEqual(weekly_stats, expected_results_list)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id),
             expected_results_list[0])
 
     def test_weekly_stats_if_no_explorations(self):
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             self._run_one_off_job()
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
-        self.assertEqual(weekly_stats, [{
-            self._mock_get_current_date_as_string(): {
-                'num_ratings': 0,
-                'average_ratings': None,
-                'total_plays': 0
-            }
-        }])
+        self.assertEqual(
+            weekly_stats, [{
+                self.mock_get_current_date_as_string(): {
+                    'num_ratings': 0,
+                    'average_ratings': None,
+                    'total_plays': 0
+                }
+            }])
 
     def test_weekly_stats_for_single_exploration(self):
         exploration = self.save_new_valid_exploration(
@@ -802,30 +841,32 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
         init_state_name = exploration.init_state_name
         self._record_play(exp_id, init_state_name)
         self._rate_exploration('user1', exp_id, 5)
-        event_services.StatsEventsHandler.record(self.EXP_ID_1, 1, {
-            'num_starts': 1,
-            'num_actual_starts': 0,
-            'num_completions': 0,
-            'state_stats_mapping': {}
-        })
+        event_services.StatsEventsHandler.record(
+            self.EXP_ID_1, 1, {
+                'num_starts': 1,
+                'num_actual_starts': 0,
+                'num_completions': 0,
+                'state_stats_mapping': {}
+            })
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             self._run_one_off_job()
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
-        self.assertEqual(weekly_stats, [{
-            self._mock_get_current_date_as_string(): {
-                'num_ratings': 1,
-                'average_ratings': 5.0,
-                'total_plays': 1
-            }
-        }])
+        self.assertEqual(
+            weekly_stats, [{
+                self.mock_get_current_date_as_string(): {
+                    'num_ratings': 1,
+                    'average_ratings': 5.0,
+                    'total_plays': 1
+                }
+            }])
 
     def test_weekly_stats_for_multiple_explorations(self):
         exploration_1 = self.save_new_valid_exploration(
@@ -838,30 +879,32 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
         self._record_play(exp_id_1, init_state_name_1)
         self._rate_exploration('user1', exp_id_1, 5)
         self._rate_exploration('user2', exp_id_2, 4)
-        event_services.StatsEventsHandler.record(self.EXP_ID_1, 1, {
-            'num_starts': 1,
-            'num_actual_starts': 0,
-            'num_completions': 0,
-            'state_stats_mapping': {}
-        })
+        event_services.StatsEventsHandler.record(
+            self.EXP_ID_1, 1, {
+                'num_starts': 1,
+                'num_actual_starts': 0,
+                'num_completions': 0,
+                'state_stats_mapping': {}
+            })
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             self._run_one_off_job()
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
-        self.assertEqual(weekly_stats, [{
-            self._mock_get_current_date_as_string(): {
-                'num_ratings': 2,
-                'average_ratings': 4.5,
-                'total_plays': 1
-            }
-        }])
+        self.assertEqual(
+            weekly_stats, [{
+                self.mock_get_current_date_as_string(): {
+                    'num_ratings': 2,
+                    'average_ratings': 4.5,
+                    'total_plays': 1
+                }
+            }])
 
     def test_stats_for_multiple_weeks(self):
         exploration = self.save_new_valid_exploration(
@@ -871,53 +914,54 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
         self._rate_exploration('user1', exp_id, 4)
         self._record_play(exp_id, init_state_name)
         self._record_play(exp_id, init_state_name)
-        event_services.StatsEventsHandler.record(self.EXP_ID_1, 1, {
-            'num_starts': 2,
-            'num_actual_starts': 0,
-            'num_completions': 0,
-            'state_stats_mapping': {}
-        })
+        event_services.StatsEventsHandler.record(
+            self.EXP_ID_1, 1, {
+                'num_starts': 2,
+                'num_actual_starts': 0,
+                'num_completions': 0,
+                'state_stats_mapping': {}
+            })
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       self._mock_get_current_date_as_string):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            self.mock_get_current_date_as_string):
             self._run_one_off_job()
 
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
-        self.assertEqual(weekly_stats, [{
-            self._mock_get_current_date_as_string(): {
-                'num_ratings': 1,
-                'average_ratings': 4.0,
-                'total_plays': 2
-            }
-        }])
+        self.assertEqual(
+            weekly_stats, [{
+                self.mock_get_current_date_as_string(): {
+                    'num_ratings': 1,
+                    'average_ratings': 4.0,
+                    'total_plays': 2
+                }
+            }])
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         stop_computation(self.owner_id))
+        MockUserStatsAggregator.stop_computation(self.owner_id)
         self.process_and_flush_pending_tasks()
 
         self._rate_exploration('user2', exp_id, 2)
 
-        (user_jobs_continuous_test.ModifiedUserStatsAggregator.
-         start_computation())
+        MockUserStatsAggregator.start_computation()
         self.process_and_flush_pending_tasks()
 
         def _mock_get_date_after_one_week():
             """Returns the date of the next week."""
             return self.DATE_AFTER_ONE_WEEK
 
-        with self.swap(user_services,
-                       'get_current_date_as_string',
-                       _mock_get_date_after_one_week):
+        with self.swap(
+            user_services,
+            'get_current_date_as_string',
+            _mock_get_date_after_one_week):
             self._run_one_off_job()
 
         expected_results_list = [
             {
-                self._mock_get_current_date_as_string(): {
+                self.mock_get_current_date_as_string(): {
                     'num_ratings': 1,
                     'average_ratings': 4.0,
                     'total_plays': 2
@@ -933,7 +977,7 @@ class DashboardStatsOneOffJobTests(test_utils.GenericTestBase):
         ]
         weekly_stats = user_services.get_weekly_dashboard_stats(self.owner_id)
         self.assertEqual(weekly_stats, expected_results_list)
-        self.assertEquals(
+        self.assertEqual(
             user_services.get_last_week_dashboard_stats(self.owner_id),
             expected_results_list[1])
 
@@ -978,12 +1022,12 @@ class UserFirstContributionMsecOneOffJobTests(test_utils.GenericTestBase):
         rights_manager.release_ownership_of_exploration(
             self.admin, self.EXP_ID)
         exp_services.update_exploration(
-            self.editor_id, self.EXP_ID, [{
+            self.editor_id, self.EXP_ID, [exp_domain.ExplorationChange({
                 'cmd': 'edit_state_property',
                 'state_name': init_state_name,
                 'property_name': 'widget_id',
                 'new_value': 'MultipleChoiceInput'
-            }], 'commit')
+            })], 'commit')
         job_id = (
             user_jobs_one_off.UserFirstContributionMsecOneOffJob.create_new())
         user_jobs_one_off.UserFirstContributionMsecOneOffJob.enqueue(job_id)
@@ -1037,10 +1081,10 @@ class UserProfilePictureOneOffJobTests(test_utils.GenericTestBase):
             user_jobs_one_off.UserProfilePictureOneOffJob.create_new())
         user_jobs_one_off.UserProfilePictureOneOffJob.enqueue(job_id)
 
-        def _mock_fetch_gravatar(unused_email):
+        def mock_fetch_gravatar(unused_email):
             return self.FETCHED_GRAVATAR
 
-        with self.swap(user_services, 'fetch_gravatar', _mock_fetch_gravatar):
+        with self.swap(user_services, 'fetch_gravatar', mock_fetch_gravatar):
             self.process_and_flush_pending_tasks()
 
         # After the job runs, the data URL has been updated.
@@ -1061,10 +1105,10 @@ class UserProfilePictureOneOffJobTests(test_utils.GenericTestBase):
             user_jobs_one_off.UserProfilePictureOneOffJob.create_new())
         user_jobs_one_off.UserProfilePictureOneOffJob.enqueue(job_id)
 
-        def _mock_fetch_gravatar(unused_email):
+        def mock_fetch_gravatar(unused_email):
             return self.FETCHED_GRAVATAR
 
-        with self.swap(user_services, 'fetch_gravatar', _mock_fetch_gravatar):
+        with self.swap(user_services, 'fetch_gravatar', mock_fetch_gravatar):
             self.process_and_flush_pending_tasks()
 
         # After the job runs, the data URL is still the manually-added one.
@@ -1120,11 +1164,12 @@ class UserLastExplorationActivityOneOffJobTests(test_utils.GenericTestBase):
             self.exp_id, self.owner_id, end_state_name='End')
         self.logout()
         self.login(self.EDITOR_EMAIL)
-        exp_services.update_exploration(self.editor_id, self.exp_id, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.editor_id, self.exp_id, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
         self.logout()
 
         user_settings = user_services.get_user_settings(self.editor_id)
@@ -1147,18 +1192,20 @@ class UserLastExplorationActivityOneOffJobTests(test_utils.GenericTestBase):
         self.login(self.OWNER_EMAIL)
         self.save_new_valid_exploration(
             self.exp_id, self.owner_id, end_state_name='End')
-        exp_services.update_exploration(self.owner_id, self.exp_id, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'the objective'
-        }], 'Test edit')
+        exp_services.update_exploration(
+            self.owner_id, self.exp_id, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'the objective'
+            })], 'Test edit')
         self.logout()
         self.login(self.EDITOR_EMAIL)
-        exp_services.update_exploration(self.editor_id, self.exp_id, [{
-            'cmd': 'edit_exploration_property',
-            'property_name': 'objective',
-            'new_value': 'new objective'
-        }], 'Test edit new')
+        exp_services.update_exploration(
+            self.editor_id, self.exp_id, [exp_domain.ExplorationChange({
+                'cmd': 'edit_exploration_property',
+                'property_name': 'objective',
+                'new_value': 'new objective'
+            })], 'Test edit new')
         self.logout()
 
         user_settings = user_services.get_user_settings(self.owner_id)
@@ -1204,3 +1251,66 @@ class UserLastExplorationActivityOneOffJobTests(test_utils.GenericTestBase):
         owner_settings = user_services.get_user_settings(self.owner_id)
         self.assertIsNone(owner_settings.last_created_an_exploration)
         self.assertIsNone(owner_settings.last_edited_an_exploration)
+
+
+class CleanupUserSubscriptionsModelUnitTests(test_utils.GenericTestBase):
+
+    def setUp(self):
+        super(CleanupUserSubscriptionsModelUnitTests, self).setUp()
+
+        self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
+
+        self.owner_id = self.get_user_id_from_email(self.OWNER_EMAIL)
+        self.user_id = self.get_user_id_from_email('user@email')
+        self.owner = user_services.UserActionsInfo(self.owner_id)
+
+        explorations = [exp_domain.Exploration.create_default_exploration(
+            '%s' % i,
+            title='title %d' % i,
+            category='category%d' % i
+        ) for i in xrange(3)]
+
+        for exp in explorations:
+            exp_services.save_new_exploration(self.owner_id, exp)
+            rights_manager.publish_exploration(self.owner, exp.id)
+
+        for exp in explorations:
+            subscription_services.subscribe_to_exploration(
+                self.user_id, exp.id)
+        self.process_and_flush_pending_tasks()
+
+    def test_standard_operation(self):
+        for exp_id in xrange(3):
+            exp_models.ExplorationModel.get('%s' % exp_id).delete(
+                self.owner_id, 'deleted exploration')
+
+        self.assertEqual(
+            len(user_models.UserSubscriptionsModel.get(self.owner_id)
+                .activity_ids), 3)
+        self.assertEqual(
+            len(user_models.UserSubscriptionsModel.get(self.user_id)
+                .activity_ids), 3)
+
+        job = user_jobs_one_off.CleanupActivityIdsFromUserSubscriptionsModelOneOffJob # pylint: disable=line-too-long
+        job_id = job.create_new()
+        job.enqueue(job_id)
+        self.assertEqual(
+            self.count_jobs_in_taskqueue(
+                taskqueue_services.QUEUE_NAME_ONE_OFF_JOBS), 1)
+        self.process_and_flush_pending_tasks()
+
+        self.assertEqual(
+            len(user_models.UserSubscriptionsModel.get(self.owner_id)
+                .activity_ids), 0)
+        self.assertEqual(
+            len(user_models.UserSubscriptionsModel.get(self.user_id)
+                .activity_ids), 0)
+        actual_output = job.get_output(job_id)
+        expected_output = [
+            u'[u\"Successfully cleaned up UserSubscriptionsModel %s and '
+            'removed explorations [u\'0\', u\'1\', u\'2\']\", 1]' %
+            self.owner_id,
+            u'[u\"Successfully cleaned up UserSubscriptionsModel %s and '
+            'removed explorations [u\'0\', u\'1\', u\'2\']\", 1]' %
+            self.user_id]
+        self.assertEqual(sorted(actual_output), sorted(expected_output))

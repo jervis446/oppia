@@ -22,15 +22,15 @@ import time
 
 from core.domain import feedback_services
 from core.tests import test_utils
+import feconf
 
 
-class FeedbackThreadSummariesLoadTest(test_utils.GenericTestBase):
+class FeedbackThreadSummariesLoadTests(test_utils.GenericTestBase):
 
     EXP_ID_1 = 'eid1'
 
     EXPECTED_THREAD_DICT = {
         'status': u'open',
-        'state_name': u'a_state_name',
         'summary': None,
         'original_author_username': None,
         'subject': u'a subject'
@@ -40,7 +40,7 @@ class FeedbackThreadSummariesLoadTest(test_utils.GenericTestBase):
     USER_USERNAME = 'user'
 
     def setUp(self):
-        super(FeedbackThreadSummariesLoadTest, self).setUp()
+        super(FeedbackThreadSummariesLoadTests, self).setUp()
 
         self.signup(self.USER_EMAIL, self.USER_USERNAME)
         self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
@@ -59,11 +59,11 @@ class FeedbackThreadSummariesLoadTest(test_utils.GenericTestBase):
         # Create 100 threads.
         for _ in range(100):
             feedback_services.create_thread(
-                self.EXP_ID_1, self.EXPECTED_THREAD_DICT['state_name'],
+                feconf.ENTITY_TYPE_EXPLORATION, self.EXP_ID_1,
                 self.user_id, self.EXPECTED_THREAD_DICT['subject'],
                 'not used here')
         threadlist = feedback_services.get_all_threads(
-            self.EXP_ID_1, False)
+            feconf.ENTITY_TYPE_EXPLORATION, self.EXP_ID_1, False)
 
         thread_ids = []
         for thread in threadlist:
@@ -71,12 +71,10 @@ class FeedbackThreadSummariesLoadTest(test_utils.GenericTestBase):
             # Create 5 messages in each thread.
             for _ in range(5):
                 feedback_services.create_message(
-                    self.EXP_ID_1, thread.get_thread_id(), self.user_id, None,
-                    None, 'editor message')
+                    thread.id, self.user_id, None, None, 'editor message')
 
         start = time.time()
         # Fetch the summaries of all the threads.
         feedback_services.get_thread_summaries(self.user_id, thread_ids)
         elapsed_time = time.time() - start
-        print "Time for fetching all the thread summaries -", elapsed_time
         self.assertLessEqual(elapsed_time, 1.7)

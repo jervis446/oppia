@@ -3,15 +3,16 @@
   height for the card content transition animation.
   -->
 <div class="conversation-skin-future-tutor-card" aria-hidden="true">
-  <div class="conversation-skin-tutor-card-content">
-    <div class="conversation-skin-tutor-card-top-section">
-      <div class="rte-viewer conversation-skin-tutor-card-top-content" angular-html-bind="upcomingContentHtml">
-      </div>
+  <div class="oppia-learner-view-card-content">
+    <div class="oppia-learner-view-card-top-section">
+      <angular-html-bind class="oppia-rte-viewer oppia-learner-view-card-top-content"
+                         html-data="nextCard.getContentHtml()">
+      </angular-html-bind>
     </div>
     <div ng-if="upcomingInlineInteractionHtml">
       <div class="conversation-skin-inline-interaction">
-        <div angular-html-bind="upcomingInlineInteractionHtml">
-        </div>
+        <angular-html-bind html-data="upcomingInlineInteractionHtml">
+        </angular-html-bind>
       </div>
     </div>
   </div>
@@ -24,17 +25,17 @@
       <div class="conversation-skin-main-tutor-card-embed"
            ng-class="{ 'conversation-skin-animate-tutor-card-on-narrow': !canWindowShowTwoCards() && isCurrentSupplementalCardNonempty()}"
            style="margin-bottom: 100px">
-        <tutor-card on-submit-answer="submitAnswer(answer, rulesService)"
-                    start-card-change-animation="startCardChangeAnimation"
-                    on-change-interaction-answer-validity="setInteractionAnswerValidity(answerValidity)">
+        <tutor-card displayed-card="displayedCard"
+                    start-card-change-animation="startCardChangeAnimation">
         </tutor-card>
         <div ng-if="isCurrentSupplementalCardNonempty() && !canWindowShowTwoCards()">
           <supplemental-card on-click-continue-button="showUpcomingCard()"
-                             on-submit-answer="submitAnswer(answer, rulesService)">
+                             displayed-card="displayedCard">
           </supplemental-card>
         </div>
         <progress-nav on-submit="submitAnswerFromProgressNav()"
-                      submit-button-is-disabled="!interactionAnswerIsValid"
+                      submit-button-is-disabled="submitButtonIsDisabled()"
+                      displayed-card="displayedCard"
                       submit-button-is-shown="!answerIsBeingProcessed"
                       on-click-continue-button="showUpcomingCard()">
         </progress-nav>
@@ -43,7 +44,7 @@
       <div ng-if="isCurrentSupplementalCardNonempty() && canWindowShowTwoCards()"
            class="conversation-skin-supplemental-card-container">
         <supplemental-card on-click-continue-button="showUpcomingCard()"
-                           on-submit-answer="submitAnswer(answer, rulesService)">
+                           displayed-card="displayedCard">
         </supplemental-card>
       </div>
     </div>
@@ -63,7 +64,7 @@
         <div>
           <div class="nav-bar-bottom-visit-oppia">
             <span ng-if="isOnTerminalCard()" class="oppia-view-more-explorations">For more explorations, visit:</span>
-            <a class="oppia-link" ng-click="onNavigateFromIframe()" href="https://www.oppia.org/" target="_blank">
+            <a class="oppia-link" ng-click="onNavigateFromIframe()" href="https://www.oppia.org/" target="_blank" rel="noopener">
               <img class="logo-bottom-nav-bar" ng-src="<[getStaticImageUrl('/logo/288x128_logo_white.png')]>">
             </a>
           </div>
@@ -84,11 +85,11 @@ directive. -->
     font-family: 'Roboto', Arial, sans-serif;
     font-size: 1.0em;
     height: 100%;
-    position:fixed;
-    top:0;
-    bottom:0;
-    width:100%;
-    overflow-y:auto;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    overflow-y: auto;
   }
 
   .oppia-progress-dot {
@@ -112,7 +113,7 @@ directive. -->
     height: 50px;
   }
 
-  .grid-container{
+  .grid-container {
     bottom: 0;
     position: fixed;
     width: 100%;
@@ -120,18 +121,15 @@ directive. -->
 
   .bottom-nav-row:before,
   .bottom-nav-row:after {
-     content:"";
-     display: table ;
-     clear:both;
+    content: "";
+    display: table;
+    clear: both;
   }
 
   [class*='col-'] {
-     float: left;
-     min-height: 1px;
-     padding: 0;
-  }
-
-  [class*='col-'] {
+    float: left;
+    min-height: 1px;
+    padding: 0;
     padding-right: 20px;
   }
 
@@ -140,10 +138,10 @@ directive. -->
   }
 
   .col-1-2 {
-   width: 50%;
+    width: 50%;
   }
-  .col-1-4{
-   width: 25%;
+  .col-1-4 {
+    width: 25%;
   }
   .col-lg-12,
   .col-md-12,
@@ -217,7 +215,7 @@ directive. -->
     left: -20px;
   }
 
-  .conversation-skin-tutor-card-top-section .conversation-skin-oppia-avatar {
+  .oppia-learner-view-card-top-section .conversation-skin-oppia-avatar {
     height: 48px;
     left: -28px;
     top: -20px;
@@ -239,6 +237,7 @@ directive. -->
   }
 
   .conversation-skin-responses-dropdown-icon {
+    transition: all 0.2s;
     -moz-transition: all 0.2s;
     -o-transition: all 0.2s;
     -webkit-transition: all 0.2s;
@@ -352,6 +351,7 @@ directive. -->
 
   .conversation-skin-help-card-content {
     width: 270px;
+    padding: 12px;
   }
 
   .conversation-skin-close-help-card-button {
@@ -379,70 +379,23 @@ directive. -->
     top: -30000px;
   }
 
-  .conversation-skin-tutor-card-top-section,
   .conversation-skin-oppia-feedback-container,
   .conversation-skin-learner-answer-container {
     position: relative;
-  }
-
-  .conversation-skin-tutor-card-top-section,
-  .conversation-skin-oppia-feedback-container,
-  .conversation-skin-learner-answer-container {
     padding: 0 20px;
   }
-  /* These rules must be kept in sync with corresponding rules in oppia.css
-     (those with '.oppia-rte-editor > p,
-       .form-control.oppia-rte-content > div > p' selectors specifying
-      the same line-height, margin-top and margin-bottom attributes)
-  */
 
-  .rte-viewer > p {
-    line-height: 28px;
-    margin-bottom: 18px;
-    margin-top: 18px;
-  }
-
-  .rte-viewer > p:first-child {
-    margin-top: 0;
-  }
-
-  .rte-viewer > p:last-child {
-    margin-bottom: 0;
-  }
-
-  .rte-viewer {
-    border-radius: 2px;
-    display: inline-block;
-    max-width: 100%;
-    position: relative;
-    text-align: left;
-  }
-
-  .conversation-skin-tutor-card-top-content,
   .conversation-skin-oppia-feedback-content,
   .conversation-skin-learner-answer-content {
     margin-bottom: 12px;
-  }
-
-  .conversation-skin-tutor-card-top-content {
-    width: 100%;
-  }
-
-  .conversation-skin-tutor-card-top-content,
-  .conversation-skin-help-card-content {
-    padding: 12px;
-  }
-
-  .conversation-skin-oppia-feedback-content,
-  .conversation-skin-learner-answer-content {
     padding: 8px 12px;
     word-wrap: break-word;
   }
 
-  .conversation-skin-tutor-card-top-content,
   .conversation-skin-oppia-feedback-content,
   .conversation-skin-help-card-content {
     background-color: rgba(224, 242, 241, 1);
+    border-top-left-radius: 0;
   }
 
   .conversation-skin-learner-answer-content {
@@ -450,10 +403,13 @@ directive. -->
     border-bottom-right-radius: 0;
   }
 
-  .conversation-skin-tutor-card-top-content,
-  .conversation-skin-oppia-feedback-content,
-  .conversation-skin-help-card-content {
-    border-top-left-radius: 0;
+  /*
+      This CSS block is for ensuring that only a response from a multi-line text input preserves newlines.
+      Leveraging the parent class ".conversation-skin-learner-answer-content" will render newlines in the
+      other interactions (ie; Multiple Choice, Item Selection) which is not necessary.
+  */
+  oppia-response-text-input {
+    white-space: pre-wrap;
   }
 
   .conversation-skin-learner-answer-container {
@@ -469,7 +425,7 @@ directive. -->
     background-color: rgba(224, 242, 241, 0.4);
   }
 
-  .conversation-skin-tutor-card-top-content::before,
+  .oppia-learner-view-card-top-content::before,
   .conversation-skin-oppia-feedback-content::before,
   .conversation-skin-help-card-content::before {
     border-left: 8px solid transparent;
@@ -512,32 +468,32 @@ directive. -->
   }
 
   .conversation-skin-feedback-dot-one {
-    -moz-animation-delay: 0.0s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.0s;
+    -moz-animation-delay: 0.0s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.0s;
+    -webkit-animation-delay: 0.0s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.0s;
     opacity: 0;
   }
 
   .conversation-skin-feedback-dot-two {
-    -moz-animation-delay: 0.2s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.2s;
+    -moz-animation-delay: 0.2s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.2s;
+    -webkit-animation-delay: 0.2s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.2s;
     opacity: 0;
   }
 
   .conversation-skin-feedback-dot-three {
-    -moz-animation-delay: 0.4s;
     -moz-animation: dot 1.0s infinite;
-    -webkit-animation-delay: 0.4s;
+    -moz-animation-delay: 0.4s;
     -webkit-animation: dot 1.0s infinite;
-    animation-delay: 0.4s;
+    -webkit-animation-delay: 0.4s;
     animation: dot 1.0s infinite;
+    animation-delay: 0.4s;
     opacity: 0;
   }
 
@@ -655,7 +611,6 @@ directive. -->
       height: 40px;
       left: 100%;
       position: absolute;
-      position: absolute;
       transform: translate(-100%, -100%);
       width: 40px;
       z-index: 16;
@@ -680,10 +635,10 @@ directive. -->
     }
 
     .col-1-2 {
-     width: 60%;
+      width: 60%;
     }
-    .col-1-4{
-     width: 20%;
+    .col-1-4 {
+      width: 20%;
     }
     .replay-nav-icon {
       font-size: 40px;

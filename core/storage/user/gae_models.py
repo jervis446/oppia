@@ -20,7 +20,7 @@ from constants import constants
 from core.platform import models
 import feconf
 
-from google.appengine.datastore.datastore_query import Cursor
+from google.appengine.datastore import datastore_query
 from google.appengine.ext import ndb
 
 (base_models,) = models.Registry.import_models([models.NAMES.base_model])
@@ -46,7 +46,9 @@ class UserSettingsModel(base_models.BaseModel):
     # When the user last agreed to the terms of the site. May be None.
     last_agreed_to_terms = ndb.DateTimeProperty(default=None)
     # When the user last started the state editor tutorial. May be None.
-    last_started_state_editor_tutorial = ndb.DateTimeProperty(default=None)  # pylint: disable=invalid-name
+    last_started_state_editor_tutorial = ndb.DateTimeProperty(default=None)
+    # When the user last started the state translation tutorial. May be None.
+    last_started_state_translation_tutorial = ndb.DateTimeProperty(default=None)
     # When the user last logged in. This may be out-of-date by up to
     # feconf.PROXIMAL_TIMEDELTA_SECS seconds.
     last_logged_in = ndb.DateTimeProperty(default=None)
@@ -176,6 +178,17 @@ class ExpUserLastPlaythroughModel(base_models.BaseModel):
 
     @classmethod
     def _generate_id(cls, user_id, exploration_id):
+        """Generates key for the instance of ExpUserLastPlaythroughModel
+        class in the required format with the arguments provided.
+
+        Args:
+            user_id: str. The id of the user.
+            exploration_id: str. The id of the exploration.
+
+        Returns:
+            str. The generated key using user_id and exploration_id
+                of the form [user_id].[exploration_id].
+        """
         return '%s.%s' % (user_id, exploration_id)
 
     @classmethod
@@ -205,7 +218,8 @@ class ExpUserLastPlaythroughModel(base_models.BaseModel):
 
         Returns:
             ExpUserLastPlaythroughModel. The ExpUserLastPlaythroughModel
-            instance which matches with the given user_id and exploration_id.
+                instance which matches with the given user_id and
+                exploration_id.
         """
         instance_id = cls._generate_id(user_id, exploration_id)
         return super(ExpUserLastPlaythroughModel, cls).get(
@@ -272,9 +286,12 @@ class UserSubscriptionsModel(base_models.BaseModel):
     activity_ids = ndb.StringProperty(repeated=True, indexed=True)
     # IDs of collections that this user subscribes to.
     collection_ids = ndb.StringProperty(repeated=True, indexed=True)
-    # IDs of feedback thread ids that this user subscribes to.
+    # DEPRECATED. DO NOT USE. Use general_feedback_thread_ids instead.
     feedback_thread_ids = ndb.StringProperty(repeated=True, indexed=True)
-    # IDs of the learners who have subscribed to this user.
+    # IDs of feedback thread ids that this user subscribes to.
+    general_feedback_thread_ids = ndb.StringProperty(
+        repeated=True, indexed=True)
+    # IDs of the creators to whom this learner has subscribed.
     creator_ids = ndb.StringProperty(repeated=True, indexed=True)
     # When the user last checked notifications. May be None.
     last_checked = ndb.DateTimeProperty(default=None)
@@ -359,7 +376,8 @@ class UserStatsModel(base_models.BaseMapReduceBatchResultsModel):
 
         Returns:
             UserStatsModel. Either an existing one which matches the
-            given user_id, or the newly created one if it did not already exist.
+                given user_id, or the newly created one if it did not already
+                exist.
         """
         entity = cls.get(user_id, strict=False)
         if not entity:
@@ -403,6 +421,17 @@ class ExplorationUserDataModel(base_models.BaseModel):
 
     @classmethod
     def _generate_id(cls, user_id, exploration_id):
+        """Generates key for the instance of ExplorationUserDataModel class in
+        the required format with the arguments provided.
+
+        Args:
+            user_id: str. The id of the user.
+            exploration_id: str. The id of the exploration.
+
+        Returns:
+            str. The generated key using user_id and exploration_id
+                of the form [user_id].[exploration_id].
+        """
         return '%s.%s' % (user_id, exploration_id)
 
     @classmethod
@@ -418,7 +447,7 @@ class ExplorationUserDataModel(base_models.BaseModel):
 
         Returns:
             ExplorationUserDataModel. The newly created
-            ExplorationUserDataModel instance.
+                ExplorationUserDataModel instance.
         """
         instance_id = cls._generate_id(user_id, exploration_id)
         return cls(
@@ -435,7 +464,7 @@ class ExplorationUserDataModel(base_models.BaseModel):
 
         Returns:
             ExplorationUserDataModel. The ExplorationUserDataModel instance
-            which matches with the given user_id and exploration_id.
+                which matches with the given user_id and exploration_id.
         """
         instance_id = cls._generate_id(user_id, exploration_id)
         return super(ExplorationUserDataModel, cls).get(
@@ -452,7 +481,7 @@ class ExplorationUserDataModel(base_models.BaseModel):
 
         Returns:
             ExplorationUserDataModel. The ExplorationUserDataModel instance
-            which matches with the given user_ids and exploration_id.
+                which matches with the given user_ids and exploration_id.
         """
         instance_ids = (
             cls._generate_id(user_id, exploration_id) for user_id in user_ids)
@@ -483,6 +512,17 @@ class CollectionProgressModel(base_models.BaseModel):
 
     @classmethod
     def _generate_id(cls, user_id, collection_id):
+        """Generates key for the instance of CollectionProgressModel class in
+        the required format with the arguments provided.
+
+        Args:
+            user_id: str. The id of the user.
+            collection_id: str. The id of the exploration.
+
+        Returns:
+            str. The generated key using user_id and exploration_id
+                of the form [user_id].[collection_id].
+        """
         return '%s.%s' % (user_id, collection_id)
 
     @classmethod
@@ -498,7 +538,7 @@ class CollectionProgressModel(base_models.BaseModel):
 
         Returns:
             CollectionProgressModel. The newly created CollectionProgressModel
-            instance.
+                instance.
         """
         instance_id = cls._generate_id(user_id, collection_id)
         return cls(
@@ -515,7 +555,7 @@ class CollectionProgressModel(base_models.BaseModel):
 
         Returns:
             CollectionProgressModel. The CollectionProgressModel instance which
-            matches the given user_id and collection_id.
+                matches the given user_id and collection_id.
         """
         instance_id = cls._generate_id(user_id, collection_id)
         return super(CollectionProgressModel, cls).get(
@@ -552,14 +592,126 @@ class CollectionProgressModel(base_models.BaseModel):
 
         Returns:
             CollectionProgressModel. Either an existing one which
-            matches the given user_id and collection_id, or the newly created
-            one if it does not already exist.
+                matches the given user_id and collection_id, or the newly
+                created one if it does not already exist.
         """
         instance_model = cls.get(user_id, collection_id)
         if instance_model:
             return instance_model
         else:
             return cls.create(user_id, collection_id)
+
+
+class StoryProgressModel(base_models.BaseModel):
+    """Stores progress a user has made within a story, including all
+    nodes which have been completed within the context of the story.
+
+    Please note instances of this progress model will persist even after a
+    story is deleted.
+
+    ID for this model is of format "{{USER_ID}}.{{STORY_ID}}".
+    """
+    # The user id.
+    user_id = ndb.StringProperty(required=True, indexed=True)
+    # The story id.
+    story_id = ndb.StringProperty(required=True, indexed=True)
+    # The list of node ids which have been completed within the context of
+    # the story represented by story_id.
+    completed_node_ids = ndb.StringProperty(repeated=True)
+
+    @classmethod
+    def _generate_id(cls, user_id, story_id):
+        """"Generates the id for StoryProgressModel.
+
+        Args:
+            user_id: str. The id of the user.
+            story_id: str. The id of the story.
+
+        Returns:
+            str. The model id corresponding to user_id and story_id.
+        """
+        return '%s.%s' % (user_id, story_id)
+
+    @classmethod
+    def create(cls, user_id, story_id):
+        """Creates a new StoryProgressModel instance and returns it.
+
+        Note: the client is responsible for actually saving this entity to the
+        datastore.
+
+        Args:
+            user_id: str. The id of the user.
+            story_id: str. The id of the story.
+
+        Returns:
+            StoryProgressModel. The newly created StoryProgressModel
+                instance.
+        """
+        instance_id = cls._generate_id(user_id, story_id)
+        return cls(
+            id=instance_id, user_id=user_id, story_id=story_id)
+
+    @classmethod
+    def get(cls, user_id, story_id, strict=True):
+        """Gets the StoryProgressModel for the given user and story
+        id.
+
+        Args:
+            user_id: str. The id of the user.
+            story_id: str. The id of the story.
+            strict: bool. Whether to fail noisily if no StoryProgressModel
+                with the given id exists in the datastore.
+
+        Returns:
+            StoryProgressModel. The StoryProgressModel instance which
+                matches the given user_id and story_id.
+        """
+        instance_id = cls._generate_id(user_id, story_id)
+        return super(StoryProgressModel, cls).get(
+            instance_id, strict=strict)
+
+    @classmethod
+    def get_multi(cls, user_id, story_ids):
+        """Gets the StoryProgressModels for the given user and story
+        ids.
+
+        Args:
+            user_id: str. The id of the user.
+            story_ids: list(str). The ids of the stories.
+
+        Returns:
+            list(StoryProgressModel). The list of StoryProgressModel
+                instances which matches the given user_id and story_ids.
+        """
+        instance_ids = [cls._generate_id(user_id, story_id)
+                        for story_id in story_ids]
+
+        return super(StoryProgressModel, cls).get_multi(
+            instance_ids)
+
+    @classmethod
+    def get_or_create(cls, user_id, story_id):
+        """Gets the StoryProgressModel for the given user and story
+        ids, or creates a new instance with if no such instance yet exists
+        within the datastore.
+
+        Note: This method is not responsible for creating the instance of
+        the class in the datastore. It just returns an instance of the class.
+
+        Args:
+            user_id: str. The id of the user.
+            story_id: str. The id of the story.
+
+        Returns:
+            StoryProgressModel. Either an existing one which
+                matches the given user_id and story_id, or the newly created
+                one if it does not already exist.
+        """
+        instance_model = cls.get(user_id, story_id, strict=False)
+        if instance_model is not None:
+            return instance_model
+        else:
+            return cls.create(user_id, story_id)
 
 
 class UserQueryModel(base_models.BaseModel):
@@ -627,7 +779,7 @@ class UserQueryModel(base_models.BaseModel):
                     this batch. If False, there are no further results after
                     this batch.
         """
-        cursor = Cursor(urlsafe=cursor)
+        cursor = datastore_query.Cursor(urlsafe=cursor)
         query_models, next_cursor, more = (
             cls.query().order(-cls.created_on).
             fetch_page(page_size, start_cursor=cursor))
@@ -643,3 +795,167 @@ class UserBulkEmailsModel(base_models.BaseModel):
     # IDs of all BulkEmailModels that correspond to bulk emails sent to this
     # user.
     sent_email_model_ids = ndb.StringProperty(indexed=True, repeated=True)
+
+
+class UserSkillMasteryModel(base_models.BaseModel):
+    """Model for storing a user's degree of mastery of a skill in Oppia.
+
+    This model stores the degree of mastery of each skill for a given user.
+
+    The id for this model is of form '{{USER_ID}}.{{SKILL_ID}}'.
+    """
+
+    # The user id of the user.
+    user_id = ndb.StringProperty(required=True, indexed=True)
+    # The skill id for which the degree of mastery is stored.
+    skill_id = ndb.StringProperty(required=True, indexed=True)
+    # The degree of mastery of the user in the skill.
+    degree_of_mastery = ndb.FloatProperty(required=True, indexed=True)
+
+    @classmethod
+    def construct_model_id(cls, user_id, skill_id):
+        """Returns model id corresponding to user and skill.
+
+        Args:
+            user_id: str. The user ID of the user.
+            skill_id: str. The unique id of the skill.
+
+        Returns:
+            str. The model id corresponding to the given user and skill.
+        """
+        return '%s.%s' % (user_id, skill_id)
+
+
+class UserContributionScoringModel(base_models.BaseModel):
+    """Model for storing the scores of a user for various suggestions created by
+    the user. Users having scores above a particular threshold for a category
+    can review suggestions for that category.
+
+    The id for this model is of the form '{{score_category}}.{{user_id}}'.
+    """
+
+    # The user id of the user.
+    user_id = ndb.StringProperty(required=True, indexed=True)
+    # The category of suggestion to score the user on.
+    score_category = ndb.StringProperty(required=True, indexed=True)
+    # The score of the user for the above category of suggestions.
+    score = ndb.FloatProperty(required=True, indexed=True)
+    # Flag to check if email to onboard reviewer has been sent for the category.
+    has_email_been_sent = ndb.BooleanProperty(required=True, default=False)
+
+    @classmethod
+    def get_all_categories_where_user_can_review(cls, user_id):
+        """Gets all the score categories where the user has a score above the
+        threshold.
+
+        Args:
+            user_id: str. The id of the user.
+
+        Returns:
+            list(str). A list of score_categories where the user has score above
+                the threshold.
+        """
+        scoring_models = cls.get_all().filter(cls.user_id == user_id).filter(
+            cls.score >= feconf.MINIMUM_SCORE_REQUIRED_TO_REVIEW).fetch()
+        return (
+            [scoring_model.score_category for scoring_model in scoring_models])
+
+    @classmethod
+    def get_all_scores_of_user(cls, user_id):
+        """Gets all scores for a given user.
+
+        Args:
+            user_id: str. The id of the user.
+
+        Returns:
+            list(UserContributionsScoringModel). All instances for the given
+                user.
+        """
+        return cls.get_all().filter(cls.user_id == user_id).fetch()
+
+    @classmethod
+    def get_all_users_with_score_above_minimum_for_category(
+            cls, score_category):
+        """Gets all instances which have score above the
+        MINIMUM_SCORE_REQUIRED_TO_REVIEW threshold for the given category.
+
+        Args:
+            score_category: str. The category being queried.
+
+        Returns:
+            list(UserContributionsScoringModel). All instances for the given
+                category with scores above MINIMUM_SCORE_REQUIRED_TO_REVIEW.
+        """
+        return cls.get_all().filter(
+            cls.score_category == score_category).filter(
+                cls.score >= feconf.MINIMUM_SCORE_REQUIRED_TO_REVIEW).fetch()
+
+    @classmethod
+    def _get_instance_id(cls, user_id, score_category):
+        """Generates the instance id in the form {{score_category}}.{{user_id}}.
+
+        Args:
+            user_id: str. The ID of the user.
+            score_category: str. The category of suggestion to score the user
+                on.
+
+        Returns:
+            str. The instance ID for UserContributionScoringModel.
+        """
+        return '.'.join([score_category, user_id])
+
+    @classmethod
+    def get_score_of_user_for_category(cls, user_id, score_category):
+        """Gets the score of the user for the given score category.
+
+        Args:
+            user_id: str. The ID of the user.
+            score_category: str. The category of suggestion to score the user
+                on.
+
+        Returns:
+            float|None. The score of the user in the given category.
+        """
+        instance_id = cls._get_instance_id(user_id, score_category)
+        model = cls.get_by_id(instance_id)
+
+        return model.score if model else None
+
+    @classmethod
+    def create(cls, user_id, score_category, score):
+        """Creates a new UserContributionScoringModel entry.
+
+        Args:
+            user_id: str. The ID of the user.
+            score_category: str. The category of the suggestion.
+            score: float. The score of the user.
+
+        Raises:
+            Exception: There is already an entry with the given id.
+        """
+        instance_id = cls._get_instance_id(user_id, score_category)
+
+        if cls.get_by_id(instance_id):
+            raise Exception('There is already an entry with the given id: %s' %
+                            instance_id)
+
+        cls(id=instance_id, user_id=user_id, score_category=score_category,
+            score=score).put()
+
+    @classmethod
+    def increment_score_for_user(cls, user_id, score_category, increment_by):
+        """Increment the score of the user in the category by the given amount.
+
+        Args:
+            user_id: str. The id of the user.
+            score_category: str. The category of the suggestion.
+            increment_by: float. The amount to increase the score of the user
+                by. May be negative, in which case the score is reduced.
+        """
+        instance_id = cls._get_instance_id(user_id, score_category)
+        model = cls.get_by_id(instance_id)
+        if not model:
+            cls.create(user_id, score_category, increment_by)
+        else:
+            model.score += increment_by
+            model.put()

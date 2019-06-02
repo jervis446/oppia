@@ -57,21 +57,7 @@ function maybeInstallDependencies {
     echo "  Running build task with concatenation only "
     echo ""
 
-    $NODE_PATH/bin/node $NODE_MODULE_DIR/gulp/bin/gulp.js build
-
-    install_node_module jasmine-core 2.5.2
-    install_node_module karma 1.5.0
-    install_node_module karma-jasmine 1.1.0
-    install_node_module karma-jasmine-jquery 0.1.1
-    install_node_module karma-json-fixtures-preprocessor 0.0.6
-    install_node_module karma-coverage 1.1.1
-    install_node_module karma-ng-html2js-preprocessor 1.0.0
-    install_node_module karma-chrome-launcher 2.0.0
-    install_node_module protractor 5.1.1
-    install_node_module protractor-screenshot-reporter 0.0.5
-    install_node_module jasmine-spec-reporter 3.2.0
-
-    $NODE_MODULE_DIR/.bin/webdriver-manager update
+    $PYTHON_CMD scripts/build.py
   fi
 
   if [ "$RUN_MINIFIED_TESTS" = "true" ]; then
@@ -79,7 +65,7 @@ function maybeInstallDependencies {
     echo "  Running build task with concatenation and minification"
     echo ""
 
-    $NODE_PATH/bin/node $NODE_MODULE_DIR/gulp/bin/gulp.js build --minify=True
+    $PYTHON_CMD scripts/build.py --prod_env
   fi
 }
 
@@ -127,7 +113,7 @@ export OPPIA_DIR=`pwd`
 export COMMON_DIR=$(cd $OPPIA_DIR/..; pwd)
 export TOOLS_DIR=$COMMON_DIR/oppia_tools
 export THIRD_PARTY_DIR=$OPPIA_DIR/third_party
-export NODE_MODULE_DIR=$COMMON_DIR/node_modules
+export NODE_MODULE_DIR=$OPPIA_DIR/node_modules
 export ME=$(whoami)
 
 mkdir -p $TOOLS_DIR
@@ -135,7 +121,7 @@ mkdir -p $THIRD_PARTY_DIR
 mkdir -p $NODE_MODULE_DIR
 
 # Adjust the path to include a reference to node.
-export NODE_PATH=$TOOLS_DIR/node-6.9.1
+export NODE_PATH=$TOOLS_DIR/node-10.15.3
 export PATH=$NODE_PATH/bin:$PATH
 export MACHINE_TYPE=`uname -m`
 export OS=`uname`
@@ -166,19 +152,19 @@ if [ ! -d "$NODE_PATH" ]; then
   echo Installing Node.js
   if [ ${OS} == "Darwin" ]; then
     if [ ${MACHINE_TYPE} == 'x86_64' ]; then
-      NODE_FILE_NAME=node-v6.9.1-darwin-x64
+      NODE_FILE_NAME=node-v10.15.3-darwin-x64
     else
-      NODE_FILE_NAME=node-v6.9.1-darwin-x86
+      NODE_FILE_NAME=node-v10.15.3-darwin-x86
     fi
   elif [ ${OS} == "Linux" ]; then
     if [ ${MACHINE_TYPE} == 'x86_64' ]; then
-      NODE_FILE_NAME=node-v6.9.1-linux-x64
+      NODE_FILE_NAME=node-v10.15.3-linux-x64
     else
-      NODE_FILE_NAME=node-v6.9.1-linux-x86
+      NODE_FILE_NAME=node-v10.15.3-linux-x86
     fi
   fi
 
-  curl -o node-download.tgz https://nodejs.org/dist/v6.9.1/$NODE_FILE_NAME.tar.gz
+  curl -o node-download.tgz https://nodejs.org/dist/v10.15.3/$NODE_FILE_NAME.tar.gz
   tar xzf node-download.tgz --directory $TOOLS_DIR
   mv $TOOLS_DIR/$NODE_FILE_NAME $NODE_PATH
   rm node-download.tgz
@@ -190,9 +176,9 @@ if [ ! -d "$NODE_PATH" ]; then
 fi
 
 # Adjust path to support the default Chrome locations for Unix, Windows and Mac OS.
-if [ "$TRAVIS" = true ]; then
+if [ "$TRAVIS" == true ]; then
   export CHROME_BIN="/usr/bin/chromium-browser"
-elif [ "$VAGRANT" = true ] || [ -f "/etc/is_vagrant_vm" ]; then
+elif [ "$VAGRANT" == true ] || [ -f "/etc/is_vagrant_vm" ]; then
   # XVFB is required for headless testing in Vagrant
   sudo apt-get install xvfb chromium-browser
   export CHROME_BIN="/usr/bin/chromium-browser"
@@ -266,26 +252,5 @@ echo "Generating list of installed node modules..."
 NPM_INSTALLED_MODULES="$($NPM_CMD list)"
 export NPM_INSTALLED_MODULES
 echo "Generation completed."
-
-install_node_module() {
-  # Usage: install_node_module [module_name] [module_version]
-  #
-  # module_name: the name of the node module
-  # module_version: the expected version of the module
-
-  echo Checking whether $1 is installed
-  if [ ! -d "$NODE_MODULE_DIR/$1" ]; then
-    echo installing $1
-    $NPM_INSTALL $1@$2
-  else
-    if [[ $NPM_INSTALLED_MODULES != *"$1@$2"* ]]; then
-      echo Version of $1 does not match $2. Reinstalling $1...
-      $NPM_INSTALL $1@$2
-      # Regenerate the list of installed modules.
-      NPM_INSTALLED_MODULES="$($NPM_CMD list)"
-    fi
-  fi
-}
-export -f install_node_module
 
 export SETUP_DONE=true

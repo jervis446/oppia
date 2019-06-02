@@ -43,11 +43,12 @@ CMD_CHANGE_PRIVATE_VIEWABILITY = 'change_private_viewability'
 CMD_RELEASE_OWNERSHIP = 'release_ownership'
 CMD_UPDATE_FIRST_PUBLISHED_MSEC = 'update_first_published_msec'
 
-ACTIVITY_STATUS_PRIVATE = feconf.ACTIVITY_STATUS_PRIVATE
-ACTIVITY_STATUS_PUBLIC = feconf.ACTIVITY_STATUS_PUBLIC
+ACTIVITY_STATUS_PRIVATE = constants.ACTIVITY_STATUS_PRIVATE
+ACTIVITY_STATUS_PUBLIC = constants.ACTIVITY_STATUS_PUBLIC
 
 ROLE_OWNER = 'owner'
 ROLE_EDITOR = 'editor'
+ROLE_VOICE_ARTIST = 'voice artist'
 ROLE_VIEWER = 'viewer'
 ROLE_NONE = 'none'
 
@@ -60,13 +61,15 @@ class ActivityRights(object):
     exploration or a collection).
     """
 
-    def __init__(self, exploration_id, owner_ids, editor_ids, viewer_ids,
-                 community_owned=False, cloned_from=None,
-                 status=ACTIVITY_STATUS_PRIVATE,
-                 viewable_if_private=False, first_published_msec=None):
+    def __init__(
+            self, exploration_id, owner_ids, editor_ids, voice_artist_ids,
+            viewer_ids, community_owned=False, cloned_from=None,
+            status=ACTIVITY_STATUS_PRIVATE, viewable_if_private=False,
+            first_published_msec=None):
         self.id = exploration_id
         self.owner_ids = owner_ids
         self.editor_ids = editor_ids
+        self.voice_artist_ids = voice_artist_ids
         self.viewer_ids = viewer_ids
         self.community_owned = community_owned
         self.cloned_from = cloned_from
@@ -78,15 +81,16 @@ class ActivityRights(object):
         """Validates an ActivityRights object.
 
         Raises:
-          utils.ValidationError: if any of the owners, editors and viewers
-          lists overlap, or if a community-owned exploration has owners,
-          editors or viewers specified.
+          utils.ValidationError: if any of the owners, editors, voice artists
+          and viewers lists overlap, or if a community-owned exploration has
+          owners, editors, voice artists or viewers specified.
         """
         if self.community_owned:
-            if self.owner_ids or self.editor_ids or self.viewer_ids:
+            if (self.owner_ids or self.editor_ids or self.voice_artist_ids or
+                    self.viewer_ids):
                 raise utils.ValidationError(
                     'Community-owned explorations should have no owners, '
-                    'editors or viewers specified.')
+                    'editors, voice artists or viewers specified.')
 
         if self.community_owned and self.status == ACTIVITY_STATUS_PRIVATE:
             raise utils.ValidationError(
@@ -97,20 +101,38 @@ class ActivityRights(object):
                 'Public explorations should have no viewers specified.')
 
         owner_editor = set(self.owner_ids).intersection(set(self.editor_ids))
+        owner_voice_artist = set(self.owner_ids).intersection(
+            set(self.voice_artist_ids))
         owner_viewer = set(self.owner_ids).intersection(set(self.viewer_ids))
+        editor_voice_artist = set(self.editor_ids).intersection(
+            set(self.voice_artist_ids))
         editor_viewer = set(self.editor_ids).intersection(set(self.viewer_ids))
+        voice_artist_viewer = set(self.voice_artist_ids).intersection(
+            set(self.viewer_ids))
         if owner_editor:
             raise utils.ValidationError(
                 'A user cannot be both an owner and an editor: %s' %
                 owner_editor)
+        if owner_voice_artist:
+            raise utils.ValidationError(
+                'A user cannot be both an owner and a voice artist: %s' %
+                owner_voice_artist)
         if owner_viewer:
             raise utils.ValidationError(
                 'A user cannot be both an owner and a viewer: %s' %
                 owner_viewer)
+        if editor_voice_artist:
+            raise utils.ValidationError(
+                'A user cannot be both an editor and a voice artist: %s' %
+                editor_voice_artist)
         if editor_viewer:
             raise utils.ValidationError(
-                'A user cannot be both an owner and an editor: %s' %
+                'A user cannot be both an editor and a viewer: %s' %
                 editor_viewer)
+        if voice_artist_viewer:
+            raise utils.ValidationError(
+                'A user cannot be both a voice artist and a viewer: %s' %
+                voice_artist_viewer)
 
     def to_dict(self):
         """Returns a dict suitable for use by the frontend.
@@ -126,6 +148,7 @@ class ActivityRights(object):
                 'community_owned': True,
                 'owner_names': [],
                 'editor_names': [],
+                'voice_artist_names': [],
                 'viewer_names': [],
                 'viewable_if_private': self.viewable_if_private,
             }
@@ -138,6 +161,8 @@ class ActivityRights(object):
                     self.owner_ids),
                 'editor_names': user_services.get_human_readable_user_ids(
                     self.editor_ids),
+                'voice_artist_names': user_services.get_human_readable_user_ids(
+                    self.voice_artist_ids),
                 'viewer_names': user_services.get_human_readable_user_ids(
                     self.viewer_ids),
                 'viewable_if_private': self.viewable_if_private,
@@ -150,7 +175,7 @@ class ActivityRights(object):
             user_id: str or None. Id of the user.
 
         Returns:
-            bool. Whether user is in activity owners.
+            bool. Whether user is an activity owner.
         """
         return bool(user_id in self.owner_ids)
 
@@ -161,9 +186,20 @@ class ActivityRights(object):
             user_id: str or None. Id of the user.
 
         Returns:
-            bool. Whether user is in activity editors.
+            bool. Whether user is an activity editor.
         """
         return bool(user_id in self.editor_ids)
+
+    def is_voice_artist(self, user_id):
+        """Checks whether given user is voice artist of activity.
+
+        Args:
+            user_id: str or None. Id of the user.
+
+        Returns:
+            bool. Whether user is an activity voice artist.
+        """
+        return bool(user_id in self.voice_artist_ids)
 
     def is_viewer(self, user_id):
         """Checks whether given user is viewer of activity.
@@ -172,7 +208,7 @@ class ActivityRights(object):
             user_id: str or None. Id of the user.
 
         Returns:
-            bool. Whether user is in activity viewers of.
+            bool. Whether user is an activity viewer.
         """
         return bool(user_id in self.viewer_ids)
 
@@ -210,6 +246,7 @@ def get_activity_rights_from_model(activity_rights_model, activity_type):
         activity_rights_model.id,
         activity_rights_model.owner_ids,
         activity_rights_model.editor_ids,
+        activity_rights_model.voice_artist_ids,
         activity_rights_model.viewer_ids,
         community_owned=activity_rights_model.community_owned,
         cloned_from=(
@@ -249,6 +286,7 @@ def _save_activity_rights(
     model.owner_ids = activity_rights.owner_ids
     model.editor_ids = activity_rights.editor_ids
     model.viewer_ids = activity_rights.viewer_ids
+    model.voice_artist_ids = activity_rights.voice_artist_ids
     model.community_owned = activity_rights.community_owned
     model.status = activity_rights.status
     model.viewable_if_private = activity_rights.viewable_if_private
@@ -343,13 +381,14 @@ def create_new_exploration_rights(exploration_id, committer_id):
         committer_id: str. ID of the committer.
     """
     exploration_rights = ActivityRights(
-        exploration_id, [committer_id], [], [])
+        exploration_id, [committer_id], [], [], [])
     commit_cmds = [{'cmd': CMD_CREATE_NEW}]
 
     exp_models.ExplorationRightsModel(
         id=exploration_rights.id,
         owner_ids=exploration_rights.owner_ids,
         editor_ids=exploration_rights.editor_ids,
+        voice_artist_ids=exploration_rights.voice_artist_ids,
         viewer_ids=exploration_rights.viewer_ids,
         community_owned=exploration_rights.community_owned,
         status=exploration_rights.status,
@@ -456,13 +495,15 @@ def create_new_collection_rights(collection_id, committer_id):
         collection_id: str. ID of the collection.
         committer_id: str. ID of the committer.
     """
-    collection_rights = ActivityRights(collection_id, [committer_id], [], [])
+    collection_rights = ActivityRights(
+        collection_id, [committer_id], [], [], [])
     commit_cmds = [{'cmd': CMD_CREATE_NEW}]
 
     collection_models.CollectionRightsModel(
         id=collection_rights.id,
         owner_ids=collection_rights.owner_ids,
         editor_ids=collection_rights.editor_ids,
+        voice_artist_ids=collection_rights.voice_artist_ids,
         viewer_ids=collection_rights.viewer_ids,
         community_owned=collection_rights.community_owned,
         status=collection_rights.status,
@@ -585,6 +626,7 @@ def check_can_access_activity(user, activity_rights):
             activity_rights.is_viewer(user.user_id) or
             activity_rights.is_owner(user.user_id) or
             activity_rights.is_editor(user.user_id) or
+            activity_rights.is_voice_artist(user.user_id) or
             activity_rights.viewable_if_private)
 
 
@@ -608,6 +650,41 @@ def check_can_edit_activity(user, activity_rights):
 
     if (activity_rights.is_owner(user.user_id) or
             activity_rights.is_editor(user.user_id)):
+        return True
+
+    if (activity_rights.community_owned or
+            (role_services.ACTION_EDIT_ANY_ACTIVITY in user.actions)):
+        return True
+
+    if (activity_rights.is_published() and
+            (role_services.ACTION_EDIT_ANY_PUBLIC_ACTIVITY in
+             user.actions)):
+        return True
+
+    return False
+
+
+def check_can_voiceover_activity(user, activity_rights):
+    """Checks whether the user can voiceover given activity.
+
+    Args:
+        user: UserActionsInfo. Object having user_id, role and actions for
+            given user.
+        activity_rights: ActivityRights or None. Rights object for the given
+            activity.
+
+    Returns:
+        bool. Whether the given user can voiceover this activity.
+    """
+    if activity_rights is None:
+        return False
+
+    if role_services.ACTION_EDIT_OWNED_ACTIVITY not in user.actions:
+        return False
+
+    if (activity_rights.is_owner(user.user_id) or
+            activity_rights.is_editor(user.user_id) or
+            activity_rights.is_voice_artist(user.user_id)):
         return True
 
     if (activity_rights.community_owned or
@@ -763,12 +840,11 @@ def _assign_role(
     Args:
         committer: UserActionsInfo. UserActionInfo object for the user
             who is performing the action.
-        activity_rights: ExplorationRightsModel|CollectionRightsModel. The
-            storage object for the rights of the given activity.
         assignee_id: str. ID of the user whose role is being changed.
         new_role: str. The name of the new role: One of
             ROLE_OWNER
             ROLE_EDITOR
+            ROLE_VOICE_ARTIST
             ROLE_VIEWER
         activity_id: str. ID of the activity.
         activity_type: str. The type of activity. Possible values:
@@ -779,7 +855,9 @@ def _assign_role(
         Exception. The committer does not have rights to modify a role.
         Exception. The user already owns the activity.
         Exception. The user can already edit the activity.
+        Exception. The user can already voiceover the activity.
         Exception. The activity is already publicly editable.
+        Exception. The activity is already publicly translatable.
         Exception. The user can already view the activity.
         Exception. The activity is already publicly viewable.
         Exception. The role is invalid.
@@ -810,6 +888,9 @@ def _assign_role(
         if assignee_id in activity_rights.editor_ids:
             activity_rights.editor_ids.remove(assignee_id)
             old_role = ROLE_EDITOR
+        if assignee_id in activity_rights.voice_artist_ids:
+            activity_rights.voice_artist_ids.remove(assignee_id)
+            old_role = ROLE_VOICE_ARTIST
 
     elif new_role == ROLE_EDITOR:
         if (activity_rights.is_editor(assignee_id) or
@@ -822,6 +903,27 @@ def _assign_role(
                 'Community-owned %ss can be edited by anyone.' % activity_type)
 
         activity_rights.editor_ids.append(assignee_id)
+
+        if assignee_id in activity_rights.voice_artist_ids:
+            activity_rights.voice_artist_ids.remove(assignee_id)
+            old_role = ROLE_VOICE_ARTIST
+
+        if assignee_id in activity_rights.viewer_ids:
+            activity_rights.viewer_ids.remove(assignee_id)
+            old_role = ROLE_VIEWER
+
+    elif new_role == ROLE_VOICE_ARTIST:
+        if (activity_rights.is_editor(assignee_id) or
+                activity_rights.is_voice_artist(assignee_id) or
+                activity_rights.is_owner(assignee_id)):
+            raise Exception(
+                'This user already can voiceover this %s.' % activity_type)
+        if activity_rights.community_owned:
+            raise Exception(
+                'Community-owned %ss can be voiceovered by anyone.' %
+                activity_type)
+
+        activity_rights.voice_artist_ids.append(assignee_id)
 
         if assignee_id in activity_rights.viewer_ids:
             activity_rights.viewer_ids.remove(assignee_id)
@@ -852,8 +954,9 @@ def _assign_role(
         'new_role': new_role
     }]
 
-    _save_activity_rights(committer_id, activity_rights, activity_type,
-                          commit_message, commit_cmds)
+    _save_activity_rights(
+        committer_id, activity_rights, activity_type,
+        commit_message, commit_cmds)
     _update_activity_summary(activity_type, activity_rights)
 
 
@@ -1008,6 +1111,7 @@ def assign_role_for_exploration(
         new_role: str. The name of the new role: One of
             ROLE_OWNER
             ROLE_EDITOR
+            ROLE_VOICE_ARTIST
 
     Raises:
         Exception. This could potentially throw an exception from
@@ -1016,7 +1120,7 @@ def assign_role_for_exploration(
     _assign_role(
         committer, assignee_id, new_role, exploration_id,
         constants.ACTIVITY_TYPE_EXPLORATION)
-    if new_role in [ROLE_OWNER, ROLE_EDITOR]:
+    if new_role in [ROLE_OWNER, ROLE_EDITOR, ROLE_VOICE_ARTIST]:
         subscription_services.subscribe_to_exploration(
             assignee_id, exploration_id)
 
@@ -1194,7 +1298,6 @@ def unpublish_collection(committer, collection_id):
     Raises:
         Exception. This could potentially throw an exception from
             _unpublish_activity.
-
     """
     _unpublish_activity(
         committer, collection_id, constants.ACTIVITY_TYPE_COLLECTION)

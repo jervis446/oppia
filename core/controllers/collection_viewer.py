@@ -14,8 +14,8 @@
 
 """Controllers for the Oppia collection learner view."""
 
+from core.controllers import acl_decorators
 from core.controllers import base
-from core.domain import acl_decorators
 from core.domain import collection_services
 from core.domain import rights_manager
 from core.domain import summary_services
@@ -39,7 +39,6 @@ class CollectionPage(base.BaseHandler):
             raise self.PageNotFoundException
 
         self.values.update({
-            'nav_mode': feconf.NAV_MODE_COLLECTION,
             'can_edit': rights_manager.check_can_edit_activity(
                 self.user, collection_rights),
             'is_logged_in': bool(self.user_id),
@@ -50,7 +49,7 @@ class CollectionPage(base.BaseHandler):
             'meta_description': utils.capitalize_string(collection.objective)
         })
 
-        self.render_template('pages/collection_player/collection_player.html')
+        self.render_template('dist/collection_player.html')
 
 
 class CollectionDataHandler(base.BaseHandler):

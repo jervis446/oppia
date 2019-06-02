@@ -7,11 +7,11 @@
           <div role="form" class="form-horizontal">
             <exploration-title-editor label-text="Title"
                                       focus-label="<[::EXPLORATION_TITLE_INPUT_FOCUS_LABEL]>"
-                                      form-style="{display:'table-cell', width:'16.66666667%'}"
+                                      form-style="<[::formStyle]>"
                                       on-input-field-blur="saveExplorationTitle()">
             </exploration-title-editor>
             <exploration-objective-editor label-text="Goal"
-                                          form-style="{display:'table-cell', width:'16.66666667%'}"
+                                          form-style="<[::formStyle]>"
                                           on-input-field-blur="saveExplorationObjective()">
             </exploration-objective-editor>
 
@@ -40,7 +40,7 @@
                 </select>
                 <span class="help-block" style="font-size: smaller">
                   <em>
-                    Don't see the language you want? <a href="https://github.com/oppia/oppia/issues/new?title=Please%20add%20a%20new%20language%20choice%20to%20the%20exploration%20settings%20tab&body=Please%20add%20the%20language%20choice%20%7B%7BYOUR_LANGUAGE_HERE%7D%7D%20to%20the%20exploration%20settings%20tab.%0A%0AHere%20is%20a%20link%20to%20an%20exploration%20that%20uses%20it:%20%7B%7BINSERT_LINK_HERE%7D%7D" target="_blank">Tell us.</a>
+                    Don't see the language you want? <a href="https://github.com/oppia/oppia/issues/new?title=Please%20add%20a%20new%20language%20choice%20to%20the%20exploration%20settings%20tab&body=Please%20add%20the%20language%20choice%20%7B%7BYOUR_LANGUAGE_HERE%7D%7D%20to%20the%20exploration%20settings%20tab.%0A%0AHere%20is%20a%20link%20to%20an%20exploration%20that%20uses%20it:%20%7B%7BINSERT_LINK_HERE%7D%7D" target="_blank" rel="noopener">Tell us.</a>
                   </em>
                 </span>
               </div>
@@ -59,15 +59,14 @@
               <label for="explorationTags" class="col-lg-2 col-md-2 col-sm-2">Tags</label>
               <div class="col-lg-10 col-md-10 col-sm-10">
                 <div ng-if="hasPageLoaded">
-                  <select2-dropdown
-                    item="$parent.explorationTagsService.displayed"
-                    choices="$parent.explorationTagsService.displayed"
-                    allow-multiple-choices="true"
-                    invalid-search-term-message="Add a new tag (using lowercase letters and spaces)..."
-                    new-choice-regex="<[::TAG_REGEX]>"
-                    width="100%"
-                    placeholder="Skills, concepts, topics..."
-                    on-selection-change="saveExplorationTags()">
+                  <select2-dropdown item="$parent.explorationTagsService.displayed"
+                                    choices="$parent.explorationTagsService.displayed"
+                                    allow-multiple-choices="true"
+                                    invalid-search-term-message="Add a new tag (using lowercase letters and spaces)..."
+                                    new-choice-regex="<[::TAG_REGEX]>"
+                                    width="100%"
+                                    placeholder="Skills, concepts, topics..."
+                                    on-selection-change="saveExplorationTags()">
                   </select2-dropdown>
                 </div>
                 <span class="help-block" style="font-size: smaller">
@@ -167,7 +166,7 @@
               </div>
             </span>
             <span class="col-lg-12 col-md-12 col-sm-12 help-block" style="font-size: smaller;">
-              Parameters are values that change as the learner moves between cards (<a href="http://oppia.github.io/#/Parameters" target="_blank">more info</a>).
+              Parameters are values that change as the learner moves between cards (<a href="http://oppia.github.io/#/Parameters" target="_blank" rel="noopener">more info</a>).
             </span>
           </div>
         </div>
@@ -244,6 +243,15 @@
             </ul>
           </div>
 
+          <div ng-show="ExplorationRightsService.voiceArtistNames.length > 0">
+            <strong>Voice Artists</strong>
+            <ul>
+              <li ng-repeat="voiceArtistName in ExplorationRightsService.voiceArtistNames track by $index">
+                <[voiceArtistName]>
+              </li>
+            </ul>
+          </div>
+
           <div ng-show="ExplorationRightsService.viewerNames.length > 0">
             <strong>Playtesters</strong>
             <ul>
@@ -274,15 +282,15 @@
                   <select ng-model="newMemberRole" class="form-control protractor-test-role-select" ng-options="r.name for r in ROLES" style="width: 250px;">
                   </select>
                   <span class="help-block">
-                    Note that managers also have the permissions of collaborators, and collaborators also have the permissions of viewers. Please note that assigning roles is irreversible (though you can always assign somebody to a higher role).
+                    Note that managers also have the permissions of collaborators, collaborators also have the permissions of voice artists, and voice artists also have the permissions of viewers. Please note that assigning roles is irreversible (though you can always assign somebody to a higher role).
                   </span>
                 </div>
 
-                <input type="submit" class="btn btn-default protractor-test-save-role" value="Save">
-                <button type="button" class="btn btn-default" ng-click="closeEditRolesForm()"
-                  ng-show="isRolesFormOpen">
+                <input type="submit" class="btn btn-default protractor-test-save-role" value="Save" ng-disabled="!isTitlePresent()">
+                <button type="button" class="btn btn-default" ng-click="closeEditRolesForm()" ng-show="isRolesFormOpen">
                   Cancel
                 </button>
+                <p ng-show="!isTitlePresent()" class="text-danger protractor-test-title-warning">Please provide a title before inviting.</p>
               </form>
             </div>
           </div>
@@ -336,7 +344,7 @@
     </div>
   </md-card>
 
-  <md-card class="oppia-editor-card">
+  <md-card class="oppia-editor-card" ng-if="EditabilityService.isEditable()">
     <h3>Feedback/Suggestion Email Preferences</h3>
     <div class="row">
       <div class="row">
@@ -463,13 +471,16 @@
     <h3>
       Initial parameter changes
       <i class="material-icons md-18" uib-tooltip="These changes are applied before the learner begins the exploration."
-         tooltip-placement="right" style="padding-left: 4px; vertical-align: text-top;">&#xE88E;</i>
+         tooltip-placement="right" style="padding-left: 4px; vertical-align: text-top;">
+        &#xE88E;
+      </i>
     </h3>
 
     <div class="row">
       <div class="col-lg-12 col-md-12 col-sm-12 protractor-test-exploration-edit-param-changes">
         <param-changes-editor param-changes-service="explorationParamChangesService"
-                              post-save-hook="postSaveParamChangesHook">
+                              post-save-hook="postSaveParamChangesHook"
+                              currently-in-settings-tab="true">
         </param-changes-editor>
       </div>
     </div>

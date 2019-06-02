@@ -290,7 +290,7 @@ def get_random_int(upper_bound):
     assert upper_bound >= 0 and isinstance(upper_bound, int)
 
     generator = random.SystemRandom()
-    return generator.randrange(0, upper_bound)
+    return generator.randrange(0, stop=upper_bound)
 
 
 def get_random_choice(alist):
@@ -320,7 +320,7 @@ def convert_png_binary_to_data_url(content):
     Raises:
         Exception: If the given binary string is not of a PNG image.
     """
-    if imghdr.what(None, content) == 'png':
+    if imghdr.what(None, h=content) == 'png':
         return 'data:image/png;base64,%s' % urllib.quote(
             content.encode('base64'))
     else:
@@ -397,7 +397,8 @@ class JSONEncoderForHTML(json.JSONEncoder):
         return ''.join(chunks) if self.ensure_ascii else u''.join(chunks)
 
     def iterencode(self, o, _one_shot=False):
-        chunks = super(JSONEncoderForHTML, self).iterencode(o, _one_shot)
+        chunks = super(
+            JSONEncoderForHTML, self).iterencode(o, _one_shot=_one_shot)
         for chunk in chunks:
             yield chunk.replace('&', '\\u0026').replace(
                 '<', '\\u003c').replace('>', '\\u003e')
@@ -423,8 +424,11 @@ def convert_to_hash(input_string, max_length):
             'Expected string, received %s of type %s' %
             (input_string, type(input_string)))
 
-    encoded_string = base64.urlsafe_b64encode(
-        hashlib.sha1(input_string.encode('utf-8')).digest())
+    # Encodes strings using the character set [A-Za-z0-9].
+    encoded_string = base64.b64encode(
+        hashlib.sha1(input_string.encode('utf-8')).digest(),
+        altchars='ab'
+    ).replace('=', 'c')
 
     return encoded_string[:max_length]
 
@@ -568,7 +572,7 @@ def require_valid_name(name, name_type, allow_empty=False):
         raise ValidationError(
             'Adjacent whitespace in %s should be collapsed.' % name_type)
 
-    for character in feconf.INVALID_NAME_CHARS:
+    for character in constants.INVALID_NAME_CHARS:
         if character in name:
             raise ValidationError(
                 'Invalid character %s in %s: %s' %
@@ -625,32 +629,17 @@ def get_thumbnail_icon_url_for_category(category):
     return '/subjects/%s.svg' % (icon_name.replace(' ', ''))
 
 
-def _get_short_language_description(full_language_description):
-    """Given one of the descriptions in constants.ALL_LANGUAGE_CODES, generates
-    the corresponding short description.
+def is_valid_language_code(language_code):
+    """Checks if the given language code is a valid language code.
 
     Args:
-        full_language_description: str. Short description of the language.
-    """
-    if ' (' not in full_language_description:
-        return full_language_description
-    else:
-        ind = full_language_description.find(' (')
-        return full_language_description[:ind]
-
-
-def get_all_language_codes_and_names():
-    """It parses the list of language codes and their corresponding names,
-    defined in the app constants.
+        language_code: str. The language code.
 
     Returns:
-        list(dict(str, str)). List of dictionary containing language code and
-            name mapped to their corresponding value.
+        bool. Whether the language code is valid or not.
     """
-    return [{
-        'code': lc['code'],
-        'name': _get_short_language_description(lc['description']),
-    } for lc in constants.ALL_LANGUAGE_CODES]
+    language_codes = [lc['code'] for lc in constants.ALL_LANGUAGE_CODES]
+    return language_code in language_codes
 
 
 def unescape_encoded_uri_component(escaped_string):
@@ -663,20 +652,10 @@ def get_asset_dir_prefix():
     It is used as a prefix in urls for images, css and script files.
     """
     asset_dir_prefix = ''
-    if not feconf.DEV_MODE:
+    if not constants.DEV_MODE:
         asset_dir_prefix = '/build'
 
     return asset_dir_prefix
-
-
-def get_template_dir_prefix():
-    """Returns prefix for template directory depending whether dev or prod.
-    It is used as a prefix in urls for js script files under the templates
-    directory.
-    """
-    template_path = (
-        '/templates/head' if not feconf.DEV_MODE else '/templates/dev/head')
-    return '%s%s' % (get_asset_dir_prefix(), template_path)
 
 
 def convert_to_str(string_to_convert):

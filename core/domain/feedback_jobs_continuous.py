@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Continuous computation jobs for feedback system."""
+
 from core import jobs
 from core.domain import feedback_domain
 from core.platform import models
@@ -44,15 +46,32 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
 
     @classmethod
     def get_event_types_listened_to(cls):
+        """Get the event types that this class is subscribed to.
+
+        Returns:
+            list(str). List of event types that this class is subscribed to.
+        """
         return [feconf.EVENT_TYPE_NEW_THREAD_CREATED,
                 feconf.EVENT_TYPE_THREAD_STATUS_CHANGED]
 
     @classmethod
     def _get_realtime_datastore_class(cls):
+        """Get the realtime datastore class used by the realtime layer.
+
+        Returns:
+            ndb.model.MetaModel. Datastore class used by the
+                realtime layer, which should be a subclass of
+                BaseRealtimeDatastoreClassForContinuousComputations.
+        """
         return FeedbackAnalyticsRealtimeModel
 
     @classmethod
     def _get_batch_job_manager_class(cls):
+        """Get manager class for the continuously-running batch job.
+
+        Returns:
+            type. Manager class for continuous-running batch job.
+        """
         return FeedbackAnalyticsMRJobManager
 
     @classmethod
@@ -63,13 +82,14 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
             active_realtime_layer: int. The currently active realtime
                 datastore layer.
             event_type: str. The event triggered by the student.
-            *args: Variable length argument list. The first element of *args
-                corresponds to the id of the exploration currently being
-                played.
+            *args: list(*). Variable length argument list. The
+                first element of *args corresponds to the id
+                of the exploration currently being played.
         """
         exp_id = args[0]
 
         def _increment_open_threads_count():
+            """Increments count of open threads by one."""
             realtime_class = cls._get_realtime_datastore_class()
             realtime_model_id = realtime_class.get_realtime_id(
                 active_realtime_layer, exp_id)
@@ -84,6 +104,7 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
                 model.put()
 
         def _increment_total_threads_count():
+            """Increments count of total threads by one."""
             realtime_class = cls._get_realtime_datastore_class()
             realtime_model_id = realtime_class.get_realtime_id(
                 active_realtime_layer, exp_id)
@@ -98,6 +119,7 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
                 model.put()
 
         def _decrement_open_threads_count():
+            """Decrements count of open threads by one."""
             realtime_class = cls._get_realtime_datastore_class()
             realtime_model_id = realtime_class.get_realtime_id(
                 active_realtime_layer, exp_id)
@@ -137,8 +159,8 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
         exploration_ids.
 
         Args:
-            exploration_ids: list(str). IDs of the explorations to get
-            analytics for.
+            exploration_ids: list(str). IDs of the explorations to get analytics
+                for.
 
         Returns:
             list(dict). Each dict in this list corresponds to an
@@ -152,12 +174,11 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
             exploration_ids)
         realtime_models = cls._get_realtime_datastore_class().get_multi(
             realtime_model_ids)
-        feedback_thread_analytics_models = (
-            feedback_models.FeedbackAnalyticsModel.get_multi(
-                exploration_ids))
 
+        feedback_thread_analytics_models = (
+            feedback_models.FeedbackAnalyticsModel.get_multi(exploration_ids))
         return [feedback_domain.FeedbackAnalytics(
-            exploration_ids[i],
+            feconf.ENTITY_TYPE_EXPLORATION, exploration_ids[i],
             (realtime_models[i].num_open_threads
              if realtime_models[i] is not None else 0) +
             (feedback_thread_analytics_models[i].num_open_threads
@@ -173,7 +194,7 @@ class FeedbackAnalyticsAggregator(jobs.BaseContinuousComputationManager):
         """Retrieves the analytics for feedback threads.
 
         Args:
-            exploration_id: str. ID of exploration to get statistics for.
+            exploration_id: str. ID of the exploration to get analytics for.
 
         Returns:
             dict with two keys:
@@ -197,11 +218,23 @@ class FeedbackAnalyticsMRJobManager(
 
     @classmethod
     def _get_continuous_computation_class(cls):
+        """Get class for continuous computaion that computes analytics
+        for feedback threads of explorations.
+
+        Returns:
+            type. Class for continuous computaion of analytics.
+        """
         return FeedbackAnalyticsAggregator
 
     @classmethod
     def entity_classes_to_map_over(cls):
-        return [feedback_models.FeedbackThreadModel]
+        """Get the list of classes that this class maps over
+
+        Returns:
+            list(GeneralFeedbackThreadModel). List of classes of feedback
+            thread models.
+        """
+        return [feedback_models.GeneralFeedbackThreadModel]
 
     @staticmethod
     def map(item):
@@ -214,8 +247,11 @@ class FeedbackAnalyticsMRJobManager(
             A tuple of two elements:
               - str. The exploration id associated to the feedback thread.
               - str. The feedback thread's status.
-      """
-        yield (item.exploration_id, item.status)
+        """
+        if isinstance(item, feedback_models.GeneralFeedbackThreadModel):
+            yield (item.entity_id, item.status)
+        else:
+            yield (item.exploration_id, item.status)
 
     @staticmethod
     def reduce(key, stringified_values):

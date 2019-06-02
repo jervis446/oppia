@@ -17,11 +17,12 @@
 import logging
 import random
 
+from constants import constants
 from core import jobs
 from core import jobs_registry
+from core.controllers import acl_decorators
 from core.controllers import base
 from core.controllers import editor
-from core.domain import acl_decorators
 from core.domain import collection_services
 from core.domain import config_domain
 from core.domain import config_services
@@ -30,7 +31,10 @@ from core.domain import exp_services
 from core.domain import recommendations_services
 from core.domain import rights_manager
 from core.domain import role_services
+from core.domain import search_services
 from core.domain import stats_services
+from core.domain import topic_domain
+from core.domain import topic_services
 from core.domain import user_services
 from core.platform import models
 import feconf
@@ -50,6 +54,9 @@ class AdminPage(base.BaseHandler):
 
         recent_job_data = jobs.get_data_for_recent_jobs()
         unfinished_job_data = jobs.get_data_for_unfinished_jobs()
+        topic_summaries = topic_services.get_all_topic_summaries()
+        topic_summary_dicts = [
+            summary.to_dict() for summary in topic_summaries]
         for job in unfinished_job_data:
             job['can_be_canceled'] = job['is_cancelable'] and any([
                 klass.__name__ == job['job_type']
@@ -100,10 +107,11 @@ class AdminPage(base.BaseHandler):
                 role: role_services.HUMAN_READABLE_ROLES[role]
                 for role in role_services.VIEWABLE_ROLES
             },
+            'topic_summaries': topic_summary_dicts,
             'role_graph_data': role_services.get_role_graph_data()
         })
 
-        self.render_template('pages/admin/admin.html')
+        self.render_template('dist/admin.html')
 
 
 class AdminHandler(base.BaseHandler):
@@ -148,7 +156,8 @@ class AdminHandler(base.BaseHandler):
                     self._generate_dummy_explorations(
                         num_dummy_exps_to_generate, num_dummy_exps_to_publish)
             elif self.payload.get('action') == 'clear_search_index':
-                exp_services.clear_search_index()
+                search_services.clear_collection_search_index()
+                search_services.clear_exploration_search_index()
             elif self.payload.get('action') == 'save_config_properties':
                 new_config_property_values = self.payload.get(
                     'new_config_property_values')
@@ -195,7 +204,16 @@ class AdminHandler(base.BaseHandler):
             raise
 
     def _reload_exploration(self, exploration_id):
-        if feconf.DEV_MODE:
+        """Reloads the exploration in dev_mode corresponding to the given
+        exploration id.
+
+        Args:
+            exploration_id: str. The exploration id.
+
+        Raises:
+            Exception: Cannot reload an exploration in production.
+        """
+        if constants.DEV_MODE:
             logging.info(
                 '[ADMIN] %s reloaded exploration %s' %
                 (self.user_id, exploration_id))
@@ -206,7 +224,16 @@ class AdminHandler(base.BaseHandler):
             raise Exception('Cannot reload an exploration in production.')
 
     def _reload_collection(self, collection_id):
-        if feconf.DEV_MODE:
+        """Reloads the collection in dev_mode corresponding to the given
+        collection id.
+
+        Args:
+            collection_id: str. The collection id.
+
+        Raises:
+            Exception: Cannot reload a collection in production.
+        """
+        if constants.DEV_MODE:
             logging.info(
                 '[ADMIN] %s reloaded collection %s' %
                 (self.user_id, collection_id))
@@ -230,7 +257,7 @@ class AdminHandler(base.BaseHandler):
             Exception: Environment is not DEVMODE.
         """
 
-        if feconf.DEV_MODE:
+        if constants.DEV_MODE:
             logging.info(
                 '[ADMIN] %s generated %s number of dummy explorations' %
                 (self.user_id, num_dummy_exps_to_generate))
@@ -241,7 +268,7 @@ class AdminHandler(base.BaseHandler):
             exploration_ids_to_publish = []
             for i in range(num_dummy_exps_to_generate):
                 title = random.choice(possible_titles)
-                category = random.choice(feconf.SEARCH_DROPDOWN_CATEGORIES)
+                category = random.choice(constants.SEARCH_DROPDOWN_CATEGORIES)
                 new_exploration_id = exp_services.get_new_exploration_id()
                 exploration = exp_domain.Exploration.create_default_exploration(
                     new_exploration_id, title=title, category=category,
@@ -296,18 +323,33 @@ class AdminRoleHandler(base.BaseHandler):
     def post(self):
         username = self.payload.get('username')
         role = self.payload.get('role')
+        topic_id = self.payload.get('topic_id')
         user_id = user_services.get_user_id_from_username(username)
         if user_id is None:
             raise self.InvalidInputException(
                 'User with given username does not exist.')
+
+        if (
+                user_services.get_user_role_from_id(user_id) ==
+                feconf.ROLE_ID_TOPIC_MANAGER):
+            topic_services.deassign_user_from_all_topics(
+                user_services.get_system_user(), user_id)
+
         user_services.update_user_role(user_id, role)
         role_services.log_role_query(
             self.user_id, feconf.ROLE_ACTION_UPDATE, role=role,
             username=username)
+
+        if topic_id:
+            user = user_services.UserActionsInfo(user_id)
+            topic_services.assign_role(
+                user_services.get_system_user(), user,
+                topic_domain.ROLE_MANAGER, topic_id)
+
         self.render_json({})
 
 
-class AdminJobOutput(base.BaseHandler):
+class AdminJobOutputHandler(base.BaseHandler):
     """Retrieves job output to show on the admin page."""
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
@@ -321,27 +363,27 @@ class AdminJobOutput(base.BaseHandler):
         })
 
 
-class AdminTopicsCsvDownloadHandler(base.BaseHandler):
+class AdminTopicsCsvFileDownloader(base.BaseHandler):
     """Retrieves topic similarity data for download."""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_DOWNLOADABLE
 
     @acl_decorators.can_access_admin_page
     def get(self):
-        self.response.headers['Content-Type'] = 'text/csv'
-        self.response.headers['Content-Disposition'] = (
-            'attachment; filename=topic_similarities.csv')
-        self.response.write(
-            recommendations_services.get_topic_similarities_as_csv())
+        self.render_downloadable_file(
+            recommendations_services.get_topic_similarities_as_csv(),
+            'topic_similarities.csv', 'text/csv')
 
 
 class DataExtractionQueryHandler(base.BaseHandler):
     """Handler for data extraction query."""
 
-    GET_HANDLER_ERROR_RETURN_TYPE = 'json'
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
 
     @acl_decorators.can_access_admin_page
     def get(self):
         exp_id = self.request.get('exp_id')
-        exp_version = self.request.get('exp_version')
+        exp_version = int(self.request.get('exp_version'))
         state_name = self.request.get('state_name')
         num_answers = int(self.request.get('num_answers'))
 

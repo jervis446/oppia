@@ -14,6 +14,7 @@
 
 """Base model class."""
 
+from constants import constants
 from core.platform import models
 import utils
 
@@ -59,6 +60,19 @@ class BaseModel(ndb.Model):
     class EntityNotFoundError(Exception):
         """Raised when no entity for a given id exists in the datastore."""
         pass
+
+    @staticmethod
+    def export_data(user_id):
+        """This method should be implemented by subclasses.
+
+        Args:
+            user_id: str. The ID of the user whose data should be exported.
+
+        Raises:
+            NotImplementedError: The method is not overwritten in derived
+                classes.
+        """
+        raise NotImplementedError
 
     @classmethod
     def get(cls, entity_id, strict=True):
@@ -130,6 +144,16 @@ class BaseModel(ndb.Model):
         """
         ndb.put_multi(entities)
 
+    @classmethod
+    def delete_multi(cls, entities):
+        """Deletes the given ndb.Model instances.
+
+        Args:
+            entities: list(ndb.Model).
+        """
+        keys = [entity.key for entity in entities]
+        ndb.delete_multi(keys)
+
     def delete(self):
         """Deletes this instance."""
         super(BaseModel, self).key.delete()
@@ -169,7 +193,7 @@ class BaseModel(ndb.Model):
                 of attempts.
         """
         try:
-            entity_name = unicode(entity_name).encode('utf-8')
+            entity_name = unicode(entity_name).encode(encoding='utf-8')
         except Exception:
             entity_name = ''
 
@@ -220,6 +244,146 @@ class BaseModel(ndb.Model):
             result[2])
 
 
+class BaseCommitLogEntryModel(BaseModel):
+    """Base Model for the models that store the log of commits to a
+    construct.
+    """
+    # Update superclass model to make these properties indexed.
+    created_on = ndb.DateTimeProperty(auto_now_add=True, indexed=True)
+    last_updated = ndb.DateTimeProperty(auto_now=True, indexed=True)
+
+    # The id of the user.
+    user_id = ndb.StringProperty(indexed=True, required=True)
+    # The username of the user, at the time of the edit.
+    username = ndb.StringProperty(indexed=True, required=True)
+    # The type of the commit: 'create', 'revert', 'edit', 'delete'.
+    commit_type = ndb.StringProperty(indexed=True, required=True)
+    # The commit message.
+    commit_message = ndb.TextProperty(indexed=False)
+    # The commit_cmds dict for this commit.
+    commit_cmds = ndb.JsonProperty(indexed=False, required=True)
+    # The status of the entity after the edit event ('private', 'public').
+    post_commit_status = ndb.StringProperty(indexed=True, required=True)
+    # Whether the entity is community-owned after the edit event.
+    post_commit_community_owned = ndb.BooleanProperty(indexed=True)
+    # Whether the entity is private after the edit event. Having a
+    # separate field for this makes queries faster, since an equality query
+    # on this property is faster than an inequality query on
+    # post_commit_status.
+    post_commit_is_private = ndb.BooleanProperty(indexed=True)
+    # The version number of the model after this commit.
+    version = ndb.IntegerProperty()
+
+    @classmethod
+    def create(
+            cls, entity_id, version, committer_id, committer_username,
+            commit_type, commit_message, commit_cmds, status,
+            community_owned):
+        """This method returns an instance of the CommitLogEntryModel for a
+        construct with the common fields filled.
+
+        Args:
+            entity_id: str. The ID of the construct corresponding to this
+                commit log entry model (e.g. the exp_id for an exploration,
+                the story_id for a story, etc.).
+            version: int. The version number of the model after the commit.
+            committer_id: str. The user_id of the user who committed the
+                change.
+            committer_username: str. The username of the user who committed the
+                change.
+            commit_type: str. The type of commit. Possible values are in
+                core.storage.base_models.COMMIT_TYPE_CHOICES.
+            commit_message: str. The commit description message.
+            commit_cmds: list(dict). A list of commands, describing changes
+                made in this model, which should give sufficient information to
+                reconstruct the commit. Each dict always contains:
+                    cmd: str. Unique command.
+                and then additional arguments for that command.
+            status: str. The status of the entity after the commit.
+            community_owned: bool. Whether the entity is community_owned after
+                the commit.
+
+        Returns:
+            CommitLogEntryModel. Returns the respective CommitLogEntryModel
+                instance of the construct from which this is called.
+        """
+        return cls(
+            id=cls._get_instance_id(entity_id, version),
+            user_id=committer_id,
+            username=committer_username,
+            commit_type=commit_type,
+            commit_message=commit_message,
+            commit_cmds=commit_cmds,
+            version=version,
+            post_commit_status=status,
+            post_commit_community_owned=community_owned,
+            post_commit_is_private=(
+                status == constants.ACTIVITY_STATUS_PRIVATE)
+        )
+
+    @classmethod
+    def _get_instance_id(cls, target_entity_id, version):
+        """This method should be implemented in the inherited classes.
+
+        Args:
+            target_entity_id: str. The ID of the construct corresponding to this
+                commit log entry model (e.g. the exp_id for an exploration,
+                the story_id for a story, etc.).
+            version: int. The version number of the model after the commit.
+
+        Raises:
+            NotImplementedError: The method is not overwritten in derived
+                classes.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def get_all_commits(cls, page_size, urlsafe_start_cursor):
+        """Fetches a list of all the commits sorted by their last updated
+        attribute.
+
+        Args:
+            page_size: int. The maximum number of entities to be returned.
+            urlsafe_start_cursor: str or None. If provided, the list of
+                returned entities starts from this datastore cursor.
+                Otherwise, the returned entities start from the beginning
+                of the full list of entities.
+
+        Returns:
+            3-tuple of (results, cursor, more) as described in fetch_page() at:
+            https://developers.google.com/appengine/docs/python/ndb/queryclass,
+            where:
+                results: List of query results.
+                cursor: str or None. A query cursor pointing to the next
+                    batch of results. If there are no more results, this might
+                    be None.
+                more: bool. If True, there are (probably) more results after
+                    this batch. If False, there are no further results after
+                    this batch.
+        """
+        return cls._fetch_page_sorted_by_last_updated(
+            cls.query(), page_size, urlsafe_start_cursor)
+
+    @classmethod
+    def get_commit(cls, target_entity_id, version):
+        """Returns the commit corresponding to an instance id and
+        version number.
+
+        Args:
+            target_entity_id: str. The ID of the construct corresponding to this
+                commit log entry model (e.g. the exp_id for an exploration,
+                the story_id for a story, etc.).
+            version: int. The version number of the instance
+                after the commit.
+
+        Returns:
+            BaseCommitLogEntryModel. The commit with the target entity id and
+                version number.
+        """
+        commit_id = cls._get_instance_id(target_entity_id, version)
+        return cls.get_by_id(commit_id)
+
+
 class VersionedModel(BaseModel):
     """Model that handles storage of the version history of model instances.
 
@@ -257,6 +421,10 @@ class VersionedModel(BaseModel):
     # The reserved prefix for keys that are automatically inserted into a
     # commit_cmd dict by this model.
     _AUTOGENERATED_PREFIX = 'AUTO'
+
+    # The command string for a revert commit.
+    CMD_REVERT_COMMIT = '%s_revert_version_number' % _AUTOGENERATED_PREFIX
+
     # The current version number of this instance. In each PUT operation,
     # this number is incremented and a snapshot of the modified instance is
     # stored in the snapshot metadata and content models. The snapshot
@@ -266,6 +434,7 @@ class VersionedModel(BaseModel):
     version = ndb.IntegerProperty(default=0)
 
     def _require_not_marked_deleted(self):
+        """Checks whether the model instance is deleted."""
         if self.deleted:
             raise Exception('This model instance has been deleted.')
 
@@ -274,6 +443,16 @@ class VersionedModel(BaseModel):
         return self.to_dict(exclude=['created_on', 'last_updated'])
 
     def _reconstitute(self, snapshot_dict):
+        """Populates the model instance with the snapshot.
+
+        Args:
+            snapshot_dict: dict(str, *). The snapshot with the model
+                property values.
+
+        Returns:
+            VersionedModel. The instance of the VersionedModel class populated
+                with the the snapshot.
+        """
         self.populate(**snapshot_dict)
         return self
 
@@ -475,9 +654,7 @@ class VersionedModel(BaseModel):
                 % model.__class__.__name__)
 
         commit_cmds = [{
-            'cmd': (
-                '%s_revert_version_number' %
-                model._AUTOGENERATED_PREFIX),  # pylint: disable=protected-access
+            'cmd': model.CMD_REVERT_COMMIT,
             'version_number': version_number
         }]
 
@@ -525,8 +702,10 @@ class VersionedModel(BaseModel):
         cls.get(entity_id)._require_not_marked_deleted()
 
         snapshot_id = cls._get_snapshot_id(entity_id, version_number)
-        return cls(id=entity_id)._reconstitute_from_snapshot_id(
-            snapshot_id)
+
+        return cls(
+            id=entity_id,
+            version=version_number)._reconstitute_from_snapshot_id(snapshot_id)
         # pylint: enable=protected-access
 
     @classmethod
